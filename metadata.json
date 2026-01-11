@@ -1,0 +1,5 @@
+{
+  "name": "OpenClass LMS",
+  "description": "A high-performance Learning Management System skeleton designed for Hostinger shared hosting, featuring a React frontend, Node.js backend, and Sequelize/MySQL integration.",
+  "requestFramePermissions": []
+}
