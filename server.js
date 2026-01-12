@@ -140,7 +140,7 @@ app.post('/api/auth/register', async (req, res) => {
       email,
       password_hash: hashedPassword,
       role,
-      is_verified: false,
+      is_verified: true,
       verification_token: verificationToken
     });
     
