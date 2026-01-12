@@ -118,6 +118,44 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body;
+    
+    // Check if user exists
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    
+    // Create user
+    const user = await User.create({
+      name,
+      email,
+      password_hash: hashedPassword,
+      role,
+      is_verified: false,
+      verification_token: verificationToken
+    });
+    
+    // Send verification email
+    await sendVerificationEmail(email, verificationToken);
+    
+    res.status(201).json({ 
+      message: 'Registration successful. Check your email to verify.' 
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+
 app.post('/api/courses/:id/enroll', authenticateToken, async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
