@@ -222,10 +222,6 @@ app.get('/api/student/dashboard', authenticateToken, async (req, res) => {
 // Serve static files from React build (CSS, JS, images, etc.)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve index.html for root path
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
 
 // Handle API 404s
 app.use('/api', (req, res) => {
