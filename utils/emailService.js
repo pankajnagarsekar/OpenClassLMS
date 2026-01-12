@@ -1,15 +1,12 @@
-
 // File: backend/utils/emailService.js
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  secure: process.env.SMTP_PORT == '465', // true for 465, false for other ports
+  service: 'gmail',
   auth: {
-    user: process.env.SMTP_USER, // Your Hostinger email
-    pass: process.env.SMTP_PASS, // Your Hostinger email password
-  },
+    user: process.env.GMAIL_EMAIL,    // Your Gmail address
+    pass: process.env.GMAIL_PASSWORD  // Your Gmail App Password (16-char password)
+  }
 });
 
 const sendVerificationEmail = async (userEmail, token) => {
@@ -17,24 +14,29 @@ const sendVerificationEmail = async (userEmail, token) => {
   const verificationLink = `${frontendUrl}/#/verify/${token}`;
 
   const mailOptions = {
-    from: `"OpenClass LMS" <${process.env.SMTP_USER}>`,
+    from: process.env.GMAIL_EMAIL,
     to: userEmail,
-    subject: 'Verify Your OpenClass Account',
+    subject: 'Email Verification - OpenClass',
     html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-        <h2 style="color: #4f46e5; text-align: center;">Welcome to OpenClass!</h2>
-        <p>Thank you for joining our learning community. To get started, please verify your email address by clicking the button below:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${verificationLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Verify Email Address</a>
-        </div>
-        <p style="color: #666; font-size: 14px;">If you did not create an account, you can safely ignore this email.</p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-        <p style="color: #999; font-size: 12px; text-align: center;">OpenClass LMS - Professional Learning Infrastructure</p>
-      </div>
-    `,
+      <h2>Welcome to OpenClass!</h2>
+      <p>Please verify your email address to complete your registration.</p>
+      <p>
+        <a href="${verificationLink}" style="background-color: #5B7DFF; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+          Verify Email
+        </a>
+      </p>
+      <p>Or copy this link: ${verificationLink}</p>
+      <p>This link expires in 24 hours.</p>
+    `
   };
 
-  return transporter.sendMail(mailOptions);
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Email sending failed:', error);
+    return false;
+  }
 };
 
 module.exports = { sendVerificationEmail };
