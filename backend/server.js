@@ -216,4 +216,19 @@ app.get('/api/student/dashboard', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// ===== SERVE REACT FRONTEND =====
+//const path = require('path');
+
+// Serve static files from React build (CSS, JS, images, etc.)
+app.use(express.static(path.join(__dirname, '../public')));
+
+// Handle API 404s
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// Fallback to React index.html for all other routes (React Router handles them)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
 sequelize.sync().then(() => app.listen(PORT, () => console.log(`OpenClass Live on ${PORT}`)));
