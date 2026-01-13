@@ -9,6 +9,14 @@ const Enrollment = sequelize.define('Enrollment', {
     primaryKey: true,
     autoIncrement: true
   },
+  user_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  course_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
   expires_at: {
     type: DataTypes.DATE,
     allowNull: false

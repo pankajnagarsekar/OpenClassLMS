@@ -15,14 +15,16 @@ const TeacherDashboard: React.FC = () => {
   const { settings } = useSettings();
   const [courses, setCourses] = useState<TeacherCourse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMyCourses = async () => {
       try {
         const res = await api.get('/teacher/my-courses');
         setCourses(res.data);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to load teacher courses", err);
+        setError(err.response?.data?.message || "Failed to load courses. Please contact support.");
       } finally {
         setLoading(false);
       }
@@ -47,8 +49,18 @@ const TeacherDashboard: React.FC = () => {
         </button>
       </div>
 
+      {error && (
+        <div className="mb-8 p-6 bg-red-50 border border-red-200 rounded-2xl text-red-700 flex items-center space-x-4">
+          <div className="text-2xl">⚠️</div>
+          <div>
+            <p className="font-bold">System Error</p>
+            <p className="text-sm">{error}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6">
-        {courses.length === 0 ? (
+        {courses.length === 0 && !error ? (
           <div className={`p-16 rounded-3xl border-2 border-dashed text-center ${settings.ENABLE_DARK_MODE ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
             <div className="text-5xl mb-4">🎓</div>
             <h3 className={`text-xl font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>You haven't created any courses yet.</h3>
