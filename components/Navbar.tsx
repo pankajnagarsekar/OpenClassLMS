@@ -22,7 +22,9 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             </a>
             
             <div className="hidden md:flex ml-10 space-x-8">
-              <a href="#/dashboard" className={`text-sm font-bold transition-colors ${settings.ENABLE_DARK_MODE ? 'text-slate-400 hover:text-indigo-400' : 'text-slate-500 hover:text-indigo-600'}`}>Catalog</a>
+              {(user || settings.ENABLE_PUBLIC_REGISTRATION) && (
+                <a href="#/dashboard" className={`text-sm font-bold transition-colors ${settings.ENABLE_DARK_MODE ? 'text-slate-400 hover:text-indigo-400' : 'text-slate-500 hover:text-indigo-600'}`}>Catalog</a>
+              )}
               {user && user.role === UserRole.STUDENT && (
                 <a href="#/student-dashboard" className={`text-sm font-bold transition-colors ${settings.ENABLE_DARK_MODE ? 'text-slate-400 hover:text-indigo-400' : 'text-slate-500 hover:text-indigo-600'}`}>My Studies</a>
               )}

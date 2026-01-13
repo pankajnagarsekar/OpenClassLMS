@@ -6,12 +6,21 @@ import { CourseCard } from '../components/CourseCard';
 import { useSettings } from '../context/SettingsContext';
 
 const Dashboard: React.FC = () => {
-  const { settings } = useSettings();
+  const { settings, loading: settingsLoading } = useSettings();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Security Check: If public registration is disabled, require login
+    if (!settingsLoading && !settings.ENABLE_PUBLIC_REGISTRATION) {
+       const token = localStorage.getItem('token');
+       if (!token) {
+         window.location.hash = '#/login';
+         return;
+       }
+    }
+
     const fetchCourses = async () => {
       try {
         const response = await api.get('/courses');
@@ -24,9 +33,9 @@ const Dashboard: React.FC = () => {
     };
 
     fetchCourses();
-  }, []);
+  }, [settings, settingsLoading]);
 
-  if (loading) {
+  if (loading || settingsLoading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>

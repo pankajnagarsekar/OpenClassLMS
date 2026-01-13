@@ -367,6 +367,22 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
 
 app.get('/api/courses', async (req, res) => {
   try {
+    // Security Check: Public Registration Setting
+    const publicReg = await getSetting('ENABLE_PUBLIC_REGISTRATION');
+    
+    if (!publicReg) {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+      if (!token) {
+        return res.status(403).json({ message: 'Access denied: Public catalog is disabled.' });
+      }
+      try {
+        jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        return res.status(403).json({ message: 'Access denied: Invalid token.' });
+      }
+    }
+
     const courses = await Course.findAll({ include: [{ model: User, as: 'Teacher', attributes: ['name'] }] });
     res.json(courses);
   } catch (error) { res.status(500).json({ message: error.message }); }

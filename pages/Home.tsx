@@ -1,32 +1,9 @@
 
-import React, { useEffect, useState } from 'react';
-import api from '../services/api';
-import { Course } from '../types';
-import { CourseCard } from '../components/CourseCard';
+import React from 'react';
 import { useSettings } from '../context/SettingsContext';
 
 const Home: React.FC = () => {
   const { settings } = useSettings();
-  const [featuredCourses, setFeaturedCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (settings.SHOW_FEATURED_COURSES) {
-      const fetchFeatured = async () => {
-        try {
-          const res = await api.get('/courses');
-          setFeaturedCourses(res.data.slice(0, 3));
-        } catch (err) {
-          console.error(err);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchFeatured();
-    } else {
-      setLoading(false);
-    }
-  }, [settings.SHOW_FEATURED_COURSES]);
 
   return (
     <div className="flex flex-col">
@@ -78,31 +55,6 @@ const Home: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* Featured Courses */}
-      {settings.SHOW_FEATURED_COURSES && (
-        <section className="max-w-7xl mx-auto px-4 py-20">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12">
-            <div>
-              <span className="text-indigo-600 font-bold tracking-widest text-sm uppercase">Curated Content</span>
-              <h2 className={`text-3xl font-bold mt-2 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Featured Courses</h2>
-            </div>
-            <a href="#/dashboard" className="text-indigo-600 font-bold hover:underline mt-4 md:mt-0">View all courses &rarr;</a>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center py-20">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {featuredCourses.map(course => (
-                <CourseCard key={course.id} course={course} />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
     </div>
   );
 };
