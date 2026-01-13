@@ -423,22 +423,51 @@ app.get('/api/courses', async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-app.get('/api/courses/:id', authenticateToken, checkEnrollmentStatus, async (req, res) => {
+// MODIFIED: Fetch Course Details (with intelligent enrollment check)
+app.get('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
-    const course = await Course.findByPk(req.params.id, { 
-      include: [
-        { model: User, as: 'Teacher', attributes: ['name'] }, 
-        { 
-          model: Lesson, 
-          include: [
-            { model: Submission, where: { user_id: req.user.id }, required: false },
-            { model: AssignmentSubmission, where: { user_id: req.user.id }, required: false }
-          ], 
-          order: [['position', 'ASC']] 
-        }
-      ] 
+    const courseId = req.params.id;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Manual Enrollment Check
+    const enrollment = await Enrollment.findOne({
+      where: { user_id: userId, course_id: courseId, is_active: true }
     });
-    res.json(course);
+    
+    const isEnrolled = !!enrollment;
+    const hasPrivilege = userRole === 'teacher' || userRole === 'admin';
+    const canAccessContent = isEnrolled || hasPrivilege;
+
+    const includeOptions = [
+      { model: User, as: 'Teacher', attributes: ['name'] }
+    ];
+
+    if (canAccessContent) {
+      includeOptions.push({
+        model: Lesson,
+        include: [
+            { model: Submission, where: { user_id: userId }, required: false },
+            { model: AssignmentSubmission, where: { user_id: userId }, required: false }
+        ],
+        order: [['position', 'ASC']]
+      });
+    }
+
+    const course = await Course.findByPk(courseId, { include: includeOptions });
+
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+
+    // Return object with 'is_enrolled' flag
+    const courseData = course.toJSON();
+    courseData.is_enrolled = isEnrolled;
+    
+    // Ensure Lessons is empty if not authorized (security layer)
+    if (!canAccessContent) {
+        courseData.Lessons = []; 
+    }
+
+    res.json(courseData);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -479,7 +508,6 @@ app.get('/api/courses/:id/discussions', authenticateToken, checkEnrollmentStatus
       order: [['createdAt', 'DESC']]
     });
     
-    // Transform to include reply count
     const data = topics.map(t => ({
       id: t.id,
       course_id: t.course_id,
@@ -498,7 +526,6 @@ app.post('/api/courses/:id/discussions', authenticateToken, async (req, res) => 
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) return res.status(404).json({ message: 'Course not found' });
-    // Only teachers/admin can create TOPICS (as per requirements)
     if (req.user.role !== 'teacher' && req.user.role !== 'admin' && course.teacher_id !== req.user.id) {
        return res.status(403).json({ message: 'Only instructors can start new discussion topics.' });
     }
@@ -530,7 +557,6 @@ app.get('/api/discussions/:id', authenticateToken, async (req, res) => {
 
     if (!topic) return res.status(404).json({ message: 'Topic not found' });
 
-    // Access Control: Check enrollment in the parent course
     const courseId = topic.Course.id;
     if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
        const enrollment = await Enrollment.findOne({ where: { user_id: req.user.id, course_id: courseId, is_active: true } });
@@ -546,7 +572,6 @@ app.post('/api/discussions/:id/replies', authenticateToken, async (req, res) => 
     const topic = await DiscussionTopic.findByPk(req.params.id, { include: [Course] });
     if (!topic) return res.status(404).json({ message: 'Topic not found' });
 
-    // Access Control
     if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
        const enrollment = await Enrollment.findOne({ where: { user_id: req.user.id, course_id: topic.Course.id, is_active: true } });
        if (!enrollment) return res.status(403).json({ message: 'You are not enrolled in this course.' });
