@@ -243,16 +243,103 @@ app.get('/api/admin/stats', authenticateToken, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// Refactored: Get Users with Stats
 app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {
   try {
-    const users = await User.findAll({ attributes: { exclude: ['password_hash'] } });
-    res.json(users);
+    const users = await User.findAll({ 
+      attributes: { exclude: ['password_hash'] },
+      include: [
+        { 
+          model: Course, 
+          as: 'TeachingCourses',
+          include: [{ model: Enrollment }] 
+        },
+        { 
+          model: Enrollment,
+          include: [
+            { model: Course, include: [Lesson] }
+          ]
+        },
+        { model: Submission },
+        { model: AssignmentSubmission }
+      ]
+    });
+
+    const enrichedUsers = users.map(user => {
+      const u = user.toJSON();
+      u.stats = {};
+
+      if (user.role === 'teacher' || user.role === 'admin') {
+        u.stats.courses_created = user.TeachingCourses.length;
+        // Calculate total unique students across all courses
+        const studentSet = new Set();
+        user.TeachingCourses.forEach(course => {
+          course.Enrollments.forEach(en => studentSet.add(en.user_id));
+        });
+        u.stats.total_students = studentSet.size;
+      }
+
+      if (user.role === 'student') {
+        u.stats.courses_enrolled = user.Enrollments.length;
+        // Rough estimation of completion across all enrolled courses
+        let totalProgress = 0;
+        let activeCourses = 0;
+        
+        user.Enrollments.forEach(en => {
+          if (en.Course && en.Course.Lessons) {
+             const totalLessons = en.Course.Lessons.length;
+             if (totalLessons > 0) {
+                // Count how many lessons have a submission or assignment submission
+                const completed = (user.Submissions.filter(s => en.Course.Lessons.some(l => l.id === s.lesson_id)).length) + 
+                                  (user.AssignmentSubmissions.filter(s => en.Course.Lessons.some(l => l.id === s.lesson_id)).length);
+                totalProgress += (completed / totalLessons) * 100;
+                activeCourses++;
+             }
+          }
+        });
+        u.stats.avg_completion = activeCourses > 0 ? Math.round(totalProgress / activeCourses) : 0;
+      }
+      
+      // Clean up heavy includes before sending
+      delete u.TeachingCourses;
+      delete u.Enrollments;
+      delete u.Submissions;
+      delete u.AssignmentSubmissions;
+      
+      return u;
+    });
+
+    res.json(enrichedUsers);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// Update User (Full Edit)
+app.put('/api/admin/users/:id', authenticateToken, adminAuth, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const { name, email, role, password } = req.body;
+
+    user.name = name || user.name;
+    user.email = email || user.email;
+    user.role = role || user.role;
+
+    if (password && password.trim() !== '') {
+      user.password_hash = await bcrypt.hash(password, 10);
+    }
+
+    await user.save();
+    res.json({ message: 'User updated successfully' });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.put('/api/admin/users/:id/toggle-status', authenticateToken, adminAuth, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
+    // Prevent deactivating the main admin
+    if (user.id === 1) return res.status(403).json({ message: 'Cannot deactivate the main administrator.' });
+    
     user.is_active = !user.is_active;
     await user.save();
     res.json({ message: `User ${user.is_active ? 'Activated' : 'Deactivated'}`, is_active: user.is_active });
@@ -261,11 +348,20 @@ app.put('/api/admin/users/:id/toggle-status', authenticateToken, adminAuth, asyn
 
 app.delete('/api/admin/users/:id', authenticateToken, adminAuth, async (req, res) => {
   try {
-    await User.destroy({ where: { id: req.params.id } });
+    const userToDelete = await User.findByPk(req.params.id);
+    if (!userToDelete) return res.status(404).json({ message: 'User not found' });
+
+    // Safeguard: Prevent deleting Main Admin
+    if (userToDelete.id === 1 || userToDelete.email === 'admin@openclass.com') {
+      return res.status(403).json({ message: 'Cannot delete the main administrator account.' });
+    }
+
+    await userToDelete.destroy();
     res.json({ message: 'User deleted' });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// Deprecated simplified reset-password route (kept for backward compatibility if needed, but UI now uses PUT)
 app.post('/api/admin/users/:id/reset-password', authenticateToken, adminAuth, async (req, res) => {
   try {
     const { newPassword } = req.body;

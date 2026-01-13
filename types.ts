@@ -21,6 +21,13 @@ export interface User {
   is_verified?: boolean;
   is_active?: boolean;
   createdAt?: string;
+  // Admin Stats (Optional)
+  stats?: {
+    courses_created?: number;
+    total_students?: number;
+    courses_enrolled?: number;
+    avg_completion?: number;
+  };
 }
 
 export interface Announcement {
