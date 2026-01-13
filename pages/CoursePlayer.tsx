@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
-import { Course, Lesson, LessonType, UserRole, AssignmentSubmission } from '../types';
+import { Course, Lesson, LessonType, UserRole, AssignmentSubmission, DiscussionTopic, DiscussionReply } from '../types';
 import { QuizView } from '../components/QuizView';
 import { AnnouncementsTab } from '../components/AnnouncementsTab';
 import { useSettings } from '../context/SettingsContext';
@@ -10,11 +10,19 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   const { settings } = useSettings();
   const [course, setCourse] = useState<Course | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
-  const [view, setView] = useState<'content' | 'announcements' | 'assignment-admin'>('content');
+  const [view, setView] = useState<'content' | 'announcements' | 'discussions' | 'assignment-admin'>('content');
   const [loading, setLoading] = useState(true);
+  
+  // Assignment State
   const [file, setFile] = useState<File | null>(null);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
   const [grading, setGrading] = useState<{ id: number; grade: string; feedback: string } | null>(null);
+
+  // Discussion State
+  const [topics, setTopics] = useState<DiscussionTopic[]>([]);
+  const [activeTopic, setActiveTopic] = useState<DiscussionTopic | null>(null);
+  const [newTopicForm, setNewTopicForm] = useState({ title: '', content: '' });
+  const [newReplyContent, setNewReplyContent] = useState('');
 
   const fetchData = async () => {
     try {
@@ -33,8 +41,23 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     } catch (err) { console.error(err); }
   };
 
+  const fetchTopics = async () => {
+    try {
+      const res = await api.get(`/courses/${courseId}/discussions`);
+      setTopics(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchThread = async (topicId: number) => {
+    try {
+      const res = await api.get(`/discussions/${topicId}`);
+      setActiveTopic(res.data);
+    } catch (err) { console.error(err); }
+  };
+
   useEffect(() => { fetchData(); }, [courseId]);
 
+  // Handle Assignment Upload
   const handleFileUpload = async () => {
     if (!file || !activeLesson) return;
     const formData = new FormData();
@@ -47,6 +70,28 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       setFile(null);
       fetchData();
     } catch (err) { alert("Upload failed."); }
+  };
+
+  // Handle Discussion Actions
+  const handleCreateTopic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post(`/courses/${courseId}/discussions`, newTopicForm);
+      setNewTopicForm({ title: '', content: '' });
+      fetchTopics();
+    } catch (err) { alert("Failed to create topic."); }
+  };
+
+  const handleCreateReply = async () => {
+    if (!activeTopic || !newReplyContent.trim()) return;
+    try {
+      const res = await api.post(`/discussions/${activeTopic.id}/replies`, { content: newReplyContent });
+      setActiveTopic(prev => prev ? { 
+         ...prev, 
+         DiscussionReplies: [...(prev.DiscussionReplies || []), res.data] 
+      } : null);
+      setNewReplyContent('');
+    } catch (err) { alert("Failed to reply."); }
   };
 
   const handleGradeSubmit = async () => {
@@ -178,6 +223,103 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     }
   };
 
+  const renderDiscussions = () => {
+    if (activeTopic) {
+      return (
+        <div className="max-w-4xl mx-auto">
+          <button onClick={() => setActiveTopic(null)} className="mb-6 text-indigo-600 font-bold flex items-center">&larr; Back to Topics</button>
+          
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 mb-8">
+            <h2 className="text-2xl font-black text-slate-900 mb-2">{activeTopic.title}</h2>
+            <div className="flex items-center text-xs text-slate-400 mb-6">
+               <span className="font-bold text-indigo-600 mr-2">{activeTopic.User?.name}</span>
+               <span>• {new Date(activeTopic.createdAt).toLocaleDateString()}</span>
+            </div>
+            <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{activeTopic.content}</p>
+          </div>
+
+          <div className="space-y-6 mb-12">
+            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Replies ({activeTopic.DiscussionReplies?.length || 0})</h3>
+            {activeTopic.DiscussionReplies?.map(reply => (
+              <div key={reply.id} className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`text-xs font-bold ${reply.User?.role === UserRole.TEACHER ? 'text-indigo-600' : 'text-slate-700'}`}>
+                    {reply.User?.name} {reply.User?.role === UserRole.TEACHER && ' (Instructor)'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">{new Date(reply.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p className="text-slate-600 text-sm">{reply.content}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sticky bottom-6 shadow-xl">
+             <textarea 
+               className="w-full bg-slate-50 rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-600 border-none"
+               placeholder="Write a reply..."
+               rows={3}
+               value={newReplyContent}
+               onChange={e => setNewReplyContent(e.target.value)}
+             />
+             <div className="mt-4 flex justify-end">
+               <button onClick={handleCreateReply} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700">Post Reply</button>
+             </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        {userRole === UserRole.TEACHER && (
+          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+            <h3 className="text-xl font-black text-slate-900 mb-6">Start New Discussion</h3>
+            <form onSubmit={handleCreateTopic} className="space-y-4">
+              <input 
+                placeholder="Topic Title"
+                className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-600"
+                value={newTopicForm.title}
+                onChange={e => setNewTopicForm({...newTopicForm, title: e.target.value})}
+                required
+              />
+              <textarea 
+                placeholder="Initial post content..."
+                className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-600 h-24"
+                value={newTopicForm.content}
+                onChange={e => setNewTopicForm({...newTopicForm, content: e.target.value})}
+                required
+              />
+              <button type="submit" className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">
+                Create Topic
+              </button>
+            </form>
+          </div>
+        )}
+
+        <div className="space-y-4">
+           {topics.length === 0 ? (
+             <div className="text-center py-20 bg-slate-100/50 rounded-3xl border border-dashed border-slate-300">
+               <p className="text-slate-500 font-medium">No discussion topics created yet.</p>
+             </div>
+           ) : (
+             topics.map(topic => (
+               <button key={topic.id} onClick={() => fetchThread(topic.id)} className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-left group">
+                 <div className="flex justify-between items-start mb-2">
+                   <h4 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{topic.title}</h4>
+                   <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md font-bold">{topic.reply_count} Replies</span>
+                 </div>
+                 <p className="text-slate-500 text-sm line-clamp-2 mb-4">{topic.content}</p>
+                 <div className="text-xs text-slate-400 font-medium">
+                   Started by {topic.User?.name} • {new Date(topic.createdAt).toLocaleDateString()}
+                 </div>
+               </button>
+             ))
+           )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`flex flex-col lg:flex-row min-h-[calc(100vh-80px)] ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 text-slate-100' : 'bg-slate-50'}`}>
       {/* Sidebar */}
@@ -189,6 +331,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
             {settings.SHOW_COURSE_ANNOUNCEMENTS && (
               <button onClick={() => setView('announcements')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'announcements' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50/10'}`}>News Feed</button>
             )}
+            <button onClick={() => { setView('discussions'); fetchTopics(); }} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'discussions' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50/10'}`}>Discussions</button>
             {userRole === UserRole.TEACHER && <a href={`#/gradebook/${courseId}`} className="text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg text-emerald-600 hover:bg-emerald-50 text-center border border-emerald-100">Gradebook</a>}
           </div>
         </div>
@@ -211,6 +354,8 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
         <div className="max-w-6xl mx-auto">
           {view === 'announcements' ? (
             <AnnouncementsTab courseId={course.id} userRole={userRole} />
+          ) : view === 'discussions' ? (
+            renderDiscussions()
           ) : view === 'assignment-admin' ? (
             <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-8 border-b border-slate-50 flex justify-between items-center">

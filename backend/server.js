@@ -18,6 +18,8 @@ const Enrollment = require('./models/Enrollment');
 const Question = require('./models/Question');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
+const DiscussionTopic = require('./models/DiscussionTopic');
+const DiscussionReply = require('./models/DiscussionReply');
 const AssignmentSubmission = require('./models/AssignmentSubmission');
 const Certificate = require('./models/Certificate');
 const SystemSetting = require('./models/SystemSetting');
@@ -36,21 +38,19 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // --- ASSOCIATIONS ---
 
-// 1. Enrollment Relationship (Many-to-Many & Direct Access)
+// 1. Enrollment Relationship
 User.belongsToMany(Course, { through: Enrollment, foreignKey: 'user_id' });
 Course.belongsToMany(User, { through: Enrollment, foreignKey: 'course_id' });
-
-// Fix: Add direct associations to allow querying Enrollment table directly and including it in Course queries
 Course.hasMany(Enrollment, { foreignKey: 'course_id' });
 Enrollment.belongsTo(Course, { foreignKey: 'course_id' });
 User.hasMany(Enrollment, { foreignKey: 'user_id' });
 Enrollment.belongsTo(User, { foreignKey: 'user_id' });
 
-// 2. Teacher Relationship (One-to-Many)
+// 2. Teacher Relationship
 Course.belongsTo(User, { foreignKey: 'teacher_id', as: 'Teacher' });
 User.hasMany(Course, { foreignKey: 'teacher_id', as: 'TeachingCourses' });
 
-// 3. Course Content Relationships
+// 3. Course Content
 Course.hasMany(Lesson, { foreignKey: 'course_id' });
 Lesson.belongsTo(Course, { foreignKey: 'course_id' });
 Course.hasMany(Announcement, { foreignKey: 'course_id' });
@@ -58,7 +58,7 @@ Announcement.belongsTo(Course, { foreignKey: 'course_id' });
 Lesson.hasMany(Question, { foreignKey: 'lesson_id' });
 Question.belongsTo(Lesson, { foreignKey: 'lesson_id' });
 
-// 4. Submission & Progress Relationships
+// 4. Submissions
 User.hasMany(Submission, { foreignKey: 'user_id', onDelete: 'CASCADE' });
 Submission.belongsTo(User, { foreignKey: 'user_id' });
 Lesson.hasMany(Submission, { foreignKey: 'lesson_id', onDelete: 'CASCADE' });
@@ -69,11 +69,24 @@ AssignmentSubmission.belongsTo(User, { foreignKey: 'user_id' });
 Lesson.hasMany(AssignmentSubmission, { foreignKey: 'lesson_id', onDelete: 'CASCADE' });
 AssignmentSubmission.belongsTo(Lesson, { foreignKey: 'lesson_id' });
 
-// 5. Certificate Relationships
+// 5. Certificates
 User.hasMany(Certificate, { foreignKey: 'user_id', onDelete: 'CASCADE' });
 Certificate.belongsTo(User, { foreignKey: 'user_id' });
 Course.hasMany(Certificate, { foreignKey: 'course_id', onDelete: 'CASCADE' });
 Certificate.belongsTo(Course, { foreignKey: 'course_id' });
+
+// 6. Discussions (New)
+Course.hasMany(DiscussionTopic, { foreignKey: 'course_id', onDelete: 'CASCADE' });
+DiscussionTopic.belongsTo(Course, { foreignKey: 'course_id' });
+
+User.hasMany(DiscussionTopic, { foreignKey: 'user_id' });
+DiscussionTopic.belongsTo(User, { foreignKey: 'user_id' });
+
+DiscussionTopic.hasMany(DiscussionReply, { foreignKey: 'topic_id', onDelete: 'CASCADE' });
+DiscussionReply.belongsTo(DiscussionTopic, { foreignKey: 'topic_id' });
+
+User.hasMany(DiscussionReply, { foreignKey: 'user_id' });
+DiscussionReply.belongsTo(User, { foreignKey: 'user_id' });
 
 // --- SETTINGS HELPER ---
 const getSetting = async (key) => {
@@ -138,6 +151,8 @@ const checkEnrollmentStatus = async (req, res, next) => {
 };
 
 // --- ROUTES ---
+
+// ... (Auth and Admin routes remain unchanged) ...
 
 app.get('/api/settings', async (req, res) => {
   try {
@@ -243,23 +258,13 @@ app.get('/api/admin/stats', authenticateToken, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// Refactored: Get Users with Stats
 app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {
   try {
     const users = await User.findAll({ 
       attributes: { exclude: ['password_hash'] },
       include: [
-        { 
-          model: Course, 
-          as: 'TeachingCourses',
-          include: [{ model: Enrollment }] 
-        },
-        { 
-          model: Enrollment,
-          include: [
-            { model: Course, include: [Lesson] }
-          ]
-        },
+        { model: Course, as: 'TeachingCourses', include: [{ model: Enrollment }] },
+        { model: Enrollment, include: [{ model: Course, include: [Lesson] }] },
         { model: Submission },
         { model: AssignmentSubmission }
       ]
@@ -268,44 +273,32 @@ app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {
     const enrichedUsers = users.map(user => {
       const u = user.toJSON();
       u.stats = {};
-
       if (user.role === 'teacher' || user.role === 'admin') {
         u.stats.courses_created = user.TeachingCourses.length;
-        // Calculate total unique students across all courses
         const studentSet = new Set();
         user.TeachingCourses.forEach(course => {
           course.Enrollments.forEach(en => studentSet.add(en.user_id));
         });
         u.stats.total_students = studentSet.size;
       }
-
       if (user.role === 'student') {
         u.stats.courses_enrolled = user.Enrollments.length;
-        // Rough estimation of completion across all enrolled courses
         let totalProgress = 0;
         let activeCourses = 0;
-        
         user.Enrollments.forEach(en => {
-          if (en.Course && en.Course.Lessons) {
-             const totalLessons = en.Course.Lessons.length;
-             if (totalLessons > 0) {
-                // Count how many lessons have a submission or assignment submission
-                const completed = (user.Submissions.filter(s => en.Course.Lessons.some(l => l.id === s.lesson_id)).length) + 
-                                  (user.AssignmentSubmissions.filter(s => en.Course.Lessons.some(l => l.id === s.lesson_id)).length);
-                totalProgress += (completed / totalLessons) * 100;
-                activeCourses++;
-             }
+          if (en.Course && en.Course.Lessons && en.Course.Lessons.length > 0) {
+             const completed = (user.Submissions.filter(s => en.Course.Lessons.some(l => l.id === s.lesson_id)).length) + 
+                               (user.AssignmentSubmissions.filter(s => en.Course.Lessons.some(l => l.id === s.lesson_id)).length);
+             totalProgress += (completed / en.Course.Lessons.length) * 100;
+             activeCourses++;
           }
         });
         u.stats.avg_completion = activeCourses > 0 ? Math.round(totalProgress / activeCourses) : 0;
       }
-      
-      // Clean up heavy includes before sending
       delete u.TeachingCourses;
       delete u.Enrollments;
       delete u.Submissions;
       delete u.AssignmentSubmissions;
-      
       return u;
     });
 
@@ -313,22 +306,17 @@ app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// Update User (Full Edit)
 app.put('/api/admin/users/:id', authenticateToken, adminAuth, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
-
     const { name, email, role, password } = req.body;
-
     user.name = name || user.name;
     user.email = email || user.email;
     user.role = role || user.role;
-
     if (password && password.trim() !== '') {
       user.password_hash = await bcrypt.hash(password, 10);
     }
-
     await user.save();
     res.json({ message: 'User updated successfully' });
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -337,9 +325,7 @@ app.put('/api/admin/users/:id', authenticateToken, adminAuth, async (req, res) =
 app.put('/api/admin/users/:id/toggle-status', authenticateToken, adminAuth, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
-    // Prevent deactivating the main admin
     if (user.id === 1) return res.status(403).json({ message: 'Cannot deactivate the main administrator.' });
-    
     user.is_active = !user.is_active;
     await user.save();
     res.json({ message: `User ${user.is_active ? 'Activated' : 'Deactivated'}`, is_active: user.is_active });
@@ -350,24 +336,11 @@ app.delete('/api/admin/users/:id', authenticateToken, adminAuth, async (req, res
   try {
     const userToDelete = await User.findByPk(req.params.id);
     if (!userToDelete) return res.status(404).json({ message: 'User not found' });
-
-    // Safeguard: Prevent deleting Main Admin
     if (userToDelete.id === 1 || userToDelete.email === 'admin@openclass.com') {
       return res.status(403).json({ message: 'Cannot delete the main administrator account.' });
     }
-
     await userToDelete.destroy();
     res.json({ message: 'User deleted' });
-  } catch (error) { res.status(500).json({ message: error.message }); }
-});
-
-// Deprecated simplified reset-password route (kept for backward compatibility if needed, but UI now uses PUT)
-app.post('/api/admin/users/:id/reset-password', authenticateToken, adminAuth, async (req, res) => {
-  try {
-    const { newPassword } = req.body;
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await User.update({ password_hash: hashedPassword }, { where: { id: req.params.id } });
-    res.json({ message: 'Password reset successful' });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -376,17 +349,10 @@ app.post('/api/admin/users/:id/reset-password', authenticateToken, adminAuth, as
 app.get('/api/teacher/my-courses', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied: Teachers only' });
-    
-    // Explicitly include Enrollment and Lesson.
-    // Use required: false for Enrollments (LEFT JOIN) so courses with 0 students are still returned.
     const courses = await Course.findAll({ 
       where: { teacher_id: req.user.id },
-      include: [
-        { model: Enrollment, required: false }, 
-        { model: Lesson, required: false } 
-      ]
+      include: [{ model: Enrollment, required: false }, { model: Lesson, required: false }] 
     });
-    
     const data = courses.map(c => ({
       id: c.id,
       title: c.title,
@@ -394,26 +360,19 @@ app.get('/api/teacher/my-courses', authenticateToken, async (req, res) => {
       lesson_count: c.Lessons ? c.Lessons.length : 0,
       createdAt: c.createdAt
     }));
-
     res.json(data);
-  } catch (error) { 
-    console.error("Error fetching teacher courses:", error);
-    res.status(500).json({ message: error.message }); 
-  }
+  } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied: Teachers only' });
-    
     const { title, description, thumbnail_url, video_embed_url, access_days } = req.body;
-    
     const course = await Course.create({
       title, description, thumbnail_url, video_embed_url,
       access_days: access_days || 365,
       teacher_id: req.user.id
     });
-
     res.status(201).json(course);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -428,7 +387,6 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// New Endpoint: Create Lesson
 app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
@@ -437,17 +395,8 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
 
     const { title, type, content, position } = req.body;
     let contentUrl = content;
-
-    // Handle file uploads (for PDFs)
-    if (req.file) {
-      contentUrl = `/uploads/${req.file.filename}`;
-    }
-
-    // Determine final content storage based on type
-    if (type === 'video') {
-       contentUrl = req.body.content; // Expects URL string
-    } 
-    // For text/assignment, content is stored directly in content_url (TEXT type)
+    if (req.file) contentUrl = `/uploads/${req.file.filename}`;
+    if (type === 'video') contentUrl = req.body.content; 
 
     const lesson = await Lesson.create({
       course_id: course.id,
@@ -456,29 +405,19 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
       content_url: contentUrl,
       position: position || 0
     });
-
     res.status(201).json(lesson);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.get('/api/courses', async (req, res) => {
   try {
-    // Security Check: Public Registration Setting
     const publicReg = await getSetting('ENABLE_PUBLIC_REGISTRATION');
-    
     if (!publicReg) {
       const authHeader = req.headers['authorization'];
       const token = authHeader && authHeader.split(' ')[1];
-      if (!token) {
-        return res.status(403).json({ message: 'Access denied: Public catalog is disabled.' });
-      }
-      try {
-        jwt.verify(token, JWT_SECRET);
-      } catch (err) {
-        return res.status(403).json({ message: 'Access denied: Invalid token.' });
-      }
+      if (!token) return res.status(403).json({ message: 'Access denied: Public catalog is disabled.' });
+      try { jwt.verify(token, JWT_SECRET); } catch (err) { return res.status(403).json({ message: 'Access denied: Invalid token.' }); }
     }
-
     const courses = await Course.findAll({ include: [{ model: User, as: 'Teacher', attributes: ['name'] }] });
     res.json(courses);
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -527,7 +466,108 @@ app.get('/api/student/dashboard', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- GRADEBOOK & MISC ---
+// --- DISCUSSIONS (New) ---
+
+app.get('/api/courses/:id/discussions', authenticateToken, checkEnrollmentStatus, async (req, res) => {
+  try {
+    const topics = await DiscussionTopic.findAll({
+      where: { course_id: req.params.id },
+      include: [
+        { model: User, attributes: ['name', 'role'] },
+        { model: DiscussionReply } 
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+    
+    // Transform to include reply count
+    const data = topics.map(t => ({
+      id: t.id,
+      course_id: t.course_id,
+      title: t.title,
+      content: t.content,
+      createdAt: t.createdAt,
+      User: t.User,
+      reply_count: t.DiscussionReplies.length
+    }));
+
+    res.json(data);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.post('/api/courses/:id/discussions', authenticateToken, async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    // Only teachers/admin can create TOPICS (as per requirements)
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin' && course.teacher_id !== req.user.id) {
+       return res.status(403).json({ message: 'Only instructors can start new discussion topics.' });
+    }
+
+    const { title, content } = req.body;
+    const topic = await DiscussionTopic.create({
+      course_id: course.id,
+      user_id: req.user.id,
+      title,
+      content
+    });
+    res.status(201).json(topic);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.get('/api/discussions/:id', authenticateToken, async (req, res) => {
+  try {
+    const topic = await DiscussionTopic.findByPk(req.params.id, {
+      include: [
+        { model: User, attributes: ['name', 'role'] },
+        { model: Course },
+        { 
+          model: DiscussionReply, 
+          include: [{ model: User, attributes: ['name', 'role'] }],
+          order: [['createdAt', 'ASC']]
+        }
+      ]
+    });
+
+    if (!topic) return res.status(404).json({ message: 'Topic not found' });
+
+    // Access Control: Check enrollment in the parent course
+    const courseId = topic.Course.id;
+    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
+       const enrollment = await Enrollment.findOne({ where: { user_id: req.user.id, course_id: courseId, is_active: true } });
+       if (!enrollment) return res.status(403).json({ message: 'You are not enrolled in the course for this discussion.' });
+    }
+
+    res.json(topic);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.post('/api/discussions/:id/replies', authenticateToken, async (req, res) => {
+  try {
+    const topic = await DiscussionTopic.findByPk(req.params.id, { include: [Course] });
+    if (!topic) return res.status(404).json({ message: 'Topic not found' });
+
+    // Access Control
+    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
+       const enrollment = await Enrollment.findOne({ where: { user_id: req.user.id, course_id: topic.Course.id, is_active: true } });
+       if (!enrollment) return res.status(403).json({ message: 'You are not enrolled in this course.' });
+    }
+
+    const { content } = req.body;
+    const reply = await DiscussionReply.create({
+      topic_id: topic.id,
+      user_id: req.user.id,
+      content
+    });
+
+    const replyWithUser = await DiscussionReply.findByPk(reply.id, {
+      include: [{ model: User, attributes: ['name', 'role'] }]
+    });
+
+    res.status(201).json(replyWithUser);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// --- GRADEBOOK ---
 
 app.get('/api/courses/:id/gradebook', authenticateToken, async (req, res) => {
   try {
@@ -535,13 +575,11 @@ app.get('/api/courses/:id/gradebook', authenticateToken, async (req, res) => {
     if (!course) return res.status(404).json({ message: 'Course not found' });
     if (req.user.role !== 'teacher' && req.user.role !== 'admin' && course.teacher_id !== req.user.id) return res.status(403).json({ message: 'Unauthorized' });
 
-    // Requires Enrollment.belongsTo(User).
     const enrollments = await Enrollment.findAll({ where: { course_id: course.id }, include: [User] });
     const lessons = course.Lessons;
 
     const rows = await Promise.all(enrollments.map(async (en) => {
       const student = en.User;
-      // Handle edge case where student user might have been deleted but enrollment remains
       if (!student) return null;
       
       const grades = {};
@@ -564,7 +602,7 @@ app.get('/api/courses/:id/gradebook', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ... (Rest of existing routes like announcements, uploads, certificate logic - unchanged) ...
+// ... (Other routes unchanged) ...
 
 const seedSettings = async () => {
   const defaults = [

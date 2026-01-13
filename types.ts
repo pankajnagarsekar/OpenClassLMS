@@ -38,6 +38,31 @@ export interface Announcement {
   createdAt: string;
 }
 
+export interface DiscussionReply {
+  id: number;
+  topic_id: number;
+  content: string;
+  createdAt: string;
+  User: {
+    name: string;
+    role: UserRole;
+  };
+}
+
+export interface DiscussionTopic {
+  id: number;
+  course_id: number;
+  title: string;
+  content: string;
+  createdAt: string;
+  User: {
+    name: string;
+    role: UserRole;
+  };
+  DiscussionReplies?: DiscussionReply[];
+  reply_count?: number;
+}
+
 export interface Question {
   id: number;
   lesson_id: number;
