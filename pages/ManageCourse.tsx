@@ -8,6 +8,12 @@ interface ManageCourseProps {
   courseId?: string; // If present, we are editing
 }
 
+interface QuizQuestion {
+  text: string;
+  options: [string, string, string, string];
+  correctAnswer: string;
+}
+
 const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
   const { settings } = useSettings();
   const [formData, setFormData] = useState({
@@ -29,6 +35,14 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     file: null as File | null
   });
   const [addingLesson, setAddingLesson] = useState(false);
+
+  // Quiz Builder State
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion>({
+    text: '',
+    options: ['', '', '', ''],
+    correctAnswer: ''
+  });
 
   const fetchCourse = async () => {
     try {
@@ -75,9 +89,32 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     }
   };
 
+  const handleAddQuestion = () => {
+    if (!currentQuestion.text || currentQuestion.options.some(opt => !opt) || !currentQuestion.correctAnswer) {
+      alert("Please fill out all question fields and select a correct answer.");
+      return;
+    }
+    setQuizQuestions([...quizQuestions, currentQuestion]);
+    setCurrentQuestion({
+      text: '',
+      options: ['', '', '', ''],
+      correctAnswer: ''
+    });
+  };
+
+  const removeQuestion = (index: number) => {
+    setQuizQuestions(quizQuestions.filter((_, i) => i !== index));
+  };
+
   const handleAddLesson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseId) return;
+    
+    if (lessonForm.type === LessonType.QUIZ && quizQuestions.length === 0) {
+      alert("Please add at least one question to the quiz.");
+      return;
+    }
+
     setAddingLesson(true);
 
     const data = new FormData();
@@ -87,6 +124,8 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
     if (lessonForm.type === LessonType.PDF && lessonForm.file) {
       data.append('file', lessonForm.file);
+    } else if (lessonForm.type === LessonType.QUIZ) {
+      data.append('questions', JSON.stringify(quizQuestions));
     } else {
       data.append('content', lessonForm.content);
     }
@@ -98,6 +137,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
       
       // Reset form and refresh list
       setLessonForm({ title: '', type: LessonType.VIDEO, content: '', file: null });
+      setQuizQuestions([]);
       fetchCourse();
     } catch (err) {
       alert('Failed to add lesson.');
@@ -234,8 +274,9 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                       onChange={e => setLessonForm({...lessonForm, type: e.target.value as LessonType})}
                    >
                      <option value={LessonType.VIDEO}>Video</option>
-                     <option value={LessonType.PDF}>PDF Document</option>
+                     <option value={LessonType.PDF}>Document (PDF/Word)</option>
                      <option value={LessonType.TEXT}>Text / Article</option>
+                     <option value={LessonType.QUIZ}>Quiz</option>
                      <option value={LessonType.ASSIGNMENT}>Assignment</option>
                    </select>
                 </div>
@@ -259,11 +300,11 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
                  {lessonForm.type === LessonType.PDF && (
                     <>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Upload PDF</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Upload Document</label>
                       <input 
                         type="file" 
                         required 
-                        accept=".pdf"
+                        accept=".pdf,.doc,.docx"
                         className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white"
                         onChange={e => setLessonForm({...lessonForm, file: e.target.files?.[0] || null})}
                       />
@@ -296,6 +337,70 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                         placeholder="Describe the project requirements..."
                       />
                     </>
+                 )}
+
+                 {lessonForm.type === LessonType.QUIZ && (
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                      <h4 className="font-bold text-slate-900 mb-4">Quiz Builder</h4>
+                      
+                      <div className="space-y-4 mb-6">
+                        <input 
+                          type="text" 
+                          placeholder="Question Text"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                          value={currentQuestion.text}
+                          onChange={e => setCurrentQuestion({...currentQuestion, text: e.target.value})}
+                        />
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          {currentQuestion.options.map((opt, idx) => (
+                            <div key={idx} className="flex items-center space-x-2">
+                              <input 
+                                type="radio" 
+                                name="correctAnswer" 
+                                checked={currentQuestion.correctAnswer === opt && opt !== ''}
+                                onChange={() => setCurrentQuestion({...currentQuestion, correctAnswer: opt})}
+                                className="w-4 h-4 text-indigo-600"
+                              />
+                              <input 
+                                type="text"
+                                placeholder={`Option ${idx + 1}`}
+                                className="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                                value={opt}
+                                onChange={e => {
+                                  const newOptions = [...currentQuestion.options] as [string, string, string, string];
+                                  newOptions[idx] = e.target.value;
+                                  // If this was the correct answer, update that too
+                                  const newCorrect = currentQuestion.correctAnswer === opt ? e.target.value : currentQuestion.correctAnswer;
+                                  setCurrentQuestion({...currentQuestion, options: newOptions, correctAnswer: newCorrect});
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <button 
+                          type="button" 
+                          onClick={handleAddQuestion}
+                          className="w-full py-2 bg-indigo-100 text-indigo-700 font-bold rounded-lg hover:bg-indigo-200 text-sm"
+                        >
+                          Add Question
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {quizQuestions.length === 0 && <p className="text-sm text-slate-400 italic">No questions added yet.</p>}
+                        {quizQuestions.map((q, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-start">
+                            <div>
+                              <p className="font-bold text-sm text-slate-800">{idx + 1}. {q.text}</p>
+                              <p className="text-xs text-green-600 font-semibold">Answer: {q.correctAnswer}</p>
+                            </div>
+                            <button type="button" onClick={() => removeQuestion(idx)} className="text-red-500 text-xs font-bold hover:underline">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                  )}
               </div>
 

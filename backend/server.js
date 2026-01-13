@@ -461,7 +461,29 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
       content_url: contentUrl,
       position: position || 0
     });
+
+    // Handle Quiz Creation
+    if (type === 'quiz' && req.body.questions) {
+      const questions = JSON.parse(req.body.questions);
+      for (const q of questions) {
+        await Question.create({
+          lesson_id: lesson.id,
+          question_text: q.text,
+          options: q.options, // Sequelize setter handles JSON stringification
+          correct_answer: q.correctAnswer
+        });
+      }
+    }
+
     res.status(201).json(lesson);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// NEW: Quiz Retrieval
+app.get('/api/lessons/:id/quiz', authenticateToken, async (req, res) => {
+  try {
+    const questions = await Question.findAll({ where: { lesson_id: req.params.id } });
+    res.json(questions);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
