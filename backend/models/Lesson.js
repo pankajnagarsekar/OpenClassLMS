@@ -24,6 +24,11 @@ const Lesson = sequelize.define('Lesson', {
   position: {
     type: DataTypes.INTEGER,
     defaultValue: 0
+  },
+  target_students: {
+    type: DataTypes.TEXT, // JSON string of user IDs
+    allowNull: true,
+    comment: 'JSON array of user IDs allowed to view this lesson'
   }
 }, {
   timestamps: true

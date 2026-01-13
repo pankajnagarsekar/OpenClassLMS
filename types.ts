@@ -99,6 +99,7 @@ export interface Lesson {
   type: LessonType;
   content_url: string;
   position: number;
+  target_students?: string; // JSON String of allowed student IDs
   Questions?: Question[];
   Submissions?: Submission[];
   AssignmentSubmissions?: AssignmentSubmission[];

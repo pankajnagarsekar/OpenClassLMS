@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { useSettings } from '../context/SettingsContext';
-import { Lesson, LessonType } from '../types';
+import { Lesson, LessonType, User } from '../types';
 
 interface ManageCourseProps {
   courseId?: string; // If present, we are editing
@@ -36,6 +36,11 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
   });
   const [addingLesson, setAddingLesson] = useState(false);
 
+  // Assignment Scoping State
+  const [assignmentScope, setAssignmentScope] = useState<'all' | 'specific'>('all');
+  const [students, setStudents] = useState<User[]>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
+
   // Quiz Builder State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion>({
@@ -64,11 +69,28 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     }
   };
 
+  const fetchCourseStudents = async () => {
+    if (!courseId) return;
+    try {
+      const res = await api.get(`/courses/${courseId}/students`);
+      setStudents(res.data);
+    } catch (err) {
+      console.error("Failed to load students for scoping", err);
+    }
+  };
+
   useEffect(() => {
     if (courseId) {
       fetchCourse();
     }
   }, [courseId]);
+
+  // Fetch students when assignment type is selected
+  useEffect(() => {
+    if (lessonForm.type === LessonType.ASSIGNMENT && courseId) {
+      fetchCourseStudents();
+    }
+  }, [lessonForm.type, courseId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,6 +152,11 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
       data.append('content', lessonForm.content);
     }
 
+    // Handle Scoping for Assignments
+    if (lessonForm.type === LessonType.ASSIGNMENT && assignmentScope === 'specific') {
+      data.append('target_students', JSON.stringify(selectedStudentIds));
+    }
+
     try {
       await api.post(`/courses/${courseId}/lessons`, data, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -138,11 +165,21 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
       // Reset form and refresh list
       setLessonForm({ title: '', type: LessonType.VIDEO, content: '', file: null });
       setQuizQuestions([]);
+      setAssignmentScope('all');
+      setSelectedStudentIds([]);
       fetchCourse();
     } catch (err) {
       alert('Failed to add lesson.');
     } finally {
       setAddingLesson(false);
+    }
+  };
+
+  const toggleStudentSelection = (studentId: number) => {
+    if (selectedStudentIds.includes(studentId)) {
+      setSelectedStudentIds(selectedStudentIds.filter(id => id !== studentId));
+    } else {
+      setSelectedStudentIds([...selectedStudentIds, studentId]);
     }
   };
 
@@ -327,6 +364,56 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
                  {lessonForm.type === LessonType.ASSIGNMENT && (
                     <>
+                      <div className="mb-6">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assignment Scope</label>
+                        <div className="flex space-x-4">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input 
+                              type="radio" 
+                              name="scope" 
+                              checked={assignmentScope === 'all'} 
+                              onChange={() => setAssignmentScope('all')}
+                              className="w-4 h-4 text-indigo-600"
+                            />
+                            <span className="text-sm font-medium">Assign to All Students</span>
+                          </label>
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input 
+                              type="radio" 
+                              name="scope" 
+                              checked={assignmentScope === 'specific'} 
+                              onChange={() => setAssignmentScope('specific')}
+                              className="w-4 h-4 text-indigo-600"
+                            />
+                            <span className="text-sm font-medium">Assign to Specific Students</span>
+                          </label>
+                        </div>
+
+                        {assignmentScope === 'specific' && (
+                          <div className="mt-4 p-4 border rounded-xl bg-slate-50 max-h-48 overflow-y-auto">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-2">Select Students</p>
+                            {students.length === 0 ? (
+                                <p className="text-sm italic text-slate-400">No students enrolled yet.</p>
+                            ) : (
+                                students.map(student => (
+                                  <label key={student.id} className="flex items-center space-x-3 mb-2 cursor-pointer hover:bg-slate-100 p-2 rounded-lg">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={selectedStudentIds.includes(student.id)}
+                                      onChange={() => toggleStudentSelection(student.id)}
+                                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-800">{student.name}</p>
+                                      <p className="text-xs text-slate-500">{student.email}</p>
+                                    </div>
+                                  </label>
+                                ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assignment Instructions</label>
                       <textarea 
                         required 

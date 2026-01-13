@@ -17,6 +17,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [view, setView] = useState<'content' | 'announcements' | 'discussions' | 'assignment-admin'>('content');
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   
   // Assignment State
   const [file, setFile] = useState<File | null>(null);
@@ -73,7 +74,14 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     }
   };
 
-  useEffect(() => { fetchData(); }, [courseId]);
+  useEffect(() => { 
+    fetchData(); 
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setCurrentUserId(user.id);
+    }
+  }, [courseId]);
 
   // Handle Assignment Upload
   const handleFileUpload = async () => {
@@ -179,6 +187,19 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       case LessonType.QUIZ:
         return <QuizView lessonId={activeLesson.id} onComplete={() => fetchData()} existingSubmission={(activeLesson as any).Submissions?.[0]} />;
       case LessonType.ASSIGNMENT:
+        // Scoping Logic
+        let isAccessDenied = false;
+        if (activeLesson.target_students && userRole === UserRole.STUDENT) {
+            try {
+                const targets = JSON.parse(activeLesson.target_students);
+                if (Array.isArray(targets) && targets.length > 0 && currentUserId && !targets.includes(currentUserId)) {
+                    isAccessDenied = true;
+                }
+            } catch (e) {
+                console.error("Failed to parse assignment scope", e);
+            }
+        }
+
         return (
           <div className={`rounded-3xl shadow-sm border p-10 ${contentBg}`}>
             <h1 className="text-3xl font-bold mb-4">{activeLesson.title}</h1>
@@ -192,6 +213,10 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                 >
                   View All Submissions
                 </button>
+              </div>
+            ) : isAccessDenied ? (
+              <div className="p-8 bg-slate-100 text-slate-500 font-medium rounded-xl border border-slate-200 text-center">
+                  🔒 This assignment is not assigned to you.
               </div>
             ) : mySubmission ? (
               <div className={`p-8 rounded-2xl border ${settings.ENABLE_DARK_MODE ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>

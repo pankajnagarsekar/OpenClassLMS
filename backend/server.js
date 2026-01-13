@@ -443,13 +443,62 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// NEW Endpoint to fetch students for a specific course (for scoping)
+app.get('/api/courses/:id/students', authenticateToken, async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id, {
+      include: [{ 
+        model: Enrollment, 
+        include: [{ model: User, attributes: ['id', 'name', 'email'] }] 
+      }]
+    });
+
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    
+    // Authorization Check
+    if (req.user.role !== 'admin' && course.teacher_id !== req.user.id) {
+       return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    const students = course.Enrollments.map(en => en.User).filter(user => user !== null);
+    res.json(students);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// NEW: Secure Announcements Endpoint
+app.get('/api/courses/:id/announcements', authenticateToken, checkEnrollmentStatus, async (req, res) => {
+  try {
+    const announcements = await Announcement.findAll({
+      where: { course_id: req.params.id },
+      order: [['createdAt', 'DESC']]
+    });
+    res.json(announcements);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.post('/api/courses/:id/announcements', authenticateToken, async (req, res) => {
+    try {
+        const course = await Course.findByPk(req.params.id);
+        if (!course) return res.status(404).json({ message: 'Course not found' });
+        if (req.user.role !== 'teacher' && req.user.role !== 'admin' && course.teacher_id !== req.user.id) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+        const announcement = await Announcement.create({
+            course_id: course.id,
+            title: req.body.title,
+            message: req.body.message
+        });
+        res.status(201).json(announcement);
+    } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) return res.status(404).json({ message: 'Course not found' });
     if (course.teacher_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ message: 'Unauthorized' });
 
-    const { title, type, content, position } = req.body;
+    const { title, type, content, position, target_students } = req.body;
     let contentUrl = content;
     if (req.file) contentUrl = `/uploads/${req.file.filename}`;
     if (type === 'video') contentUrl = req.body.content; 
@@ -459,7 +508,8 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
       title,
       type,
       content_url: contentUrl,
-      position: position || 0
+      position: position || 0,
+      target_students: target_students ? target_students : null
     });
 
     // Handle Quiz Creation
