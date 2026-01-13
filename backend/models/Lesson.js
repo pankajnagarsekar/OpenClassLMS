@@ -18,8 +18,8 @@ const Lesson = sequelize.define('Lesson', {
     allowNull: false
   },
   content_url: {
-    type: DataTypes.STRING,
-    allowNull: true // Assignments/Quizzes might not have a direct file URL
+    type: DataTypes.TEXT, // Changed to TEXT to support long instructions or text content
+    allowNull: true
   },
   position: {
     type: DataTypes.INTEGER,

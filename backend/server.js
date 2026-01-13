@@ -332,6 +332,39 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// New Endpoint: Create Lesson
+app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (course.teacher_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ message: 'Unauthorized' });
+
+    const { title, type, content, position } = req.body;
+    let contentUrl = content;
+
+    // Handle file uploads (for PDFs)
+    if (req.file) {
+      contentUrl = `/uploads/${req.file.filename}`;
+    }
+
+    // Determine final content storage based on type
+    if (type === 'video') {
+       contentUrl = req.body.content; // Expects URL string
+    } 
+    // For text/assignment, content is stored directly in content_url (TEXT type)
+
+    const lesson = await Lesson.create({
+      course_id: course.id,
+      title,
+      type,
+      content_url: contentUrl,
+      position: position || 0
+    });
+
+    res.status(201).json(lesson);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 app.get('/api/courses', async (req, res) => {
   try {
     const courses = await Course.findAll({ include: [{ model: User, as: 'Teacher', attributes: ['name'] }] });

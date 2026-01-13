@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { Lesson, LessonType } from '../types';
 
 interface ManageCourseProps {
   courseId?: string; // If present, we are editing
@@ -16,27 +17,41 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     video_embed_url: '',
     access_days: 365
   });
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(!!courseId);
   const [saving, setSaving] = useState(false);
+  
+  // Lesson Form State
+  const [lessonForm, setLessonForm] = useState({
+    title: '',
+    type: LessonType.VIDEO,
+    content: '',
+    file: null as File | null
+  });
+  const [addingLesson, setAddingLesson] = useState(false);
+
+  const fetchCourse = async () => {
+    try {
+      const res = await api.get(`/courses/${courseId}`);
+      setFormData({
+        title: res.data.title,
+        description: res.data.description,
+        thumbnail_url: res.data.thumbnail_url,
+        video_embed_url: res.data.video_embed_url,
+        access_days: res.data.access_days
+      });
+      if (res.data.Lessons) {
+        setLessons(res.data.Lessons);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (courseId) {
-      const fetchCourse = async () => {
-        try {
-          const res = await api.get(`/courses/${courseId}`);
-          setFormData({
-            title: res.data.title,
-            description: res.data.description,
-            thumbnail_url: res.data.thumbnail_url,
-            video_embed_url: res.data.video_embed_url,
-            access_days: res.data.access_days
-          });
-        } catch (err) {
-          console.error(err);
-        } finally {
-          setLoading(false);
-        }
-      };
       fetchCourse();
     }
   }, [courseId]);
@@ -60,10 +75,41 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     }
   };
 
+  const handleAddLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseId) return;
+    setAddingLesson(true);
+
+    const data = new FormData();
+    data.append('title', lessonForm.title);
+    data.append('type', lessonForm.type);
+    data.append('position', (lessons.length + 1).toString());
+
+    if (lessonForm.type === LessonType.PDF && lessonForm.file) {
+      data.append('file', lessonForm.file);
+    } else {
+      data.append('content', lessonForm.content);
+    }
+
+    try {
+      await api.post(`/courses/${courseId}/lessons`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      // Reset form and refresh list
+      setLessonForm({ title: '', type: LessonType.VIDEO, content: '', file: null });
+      fetchCourse();
+    } catch (err) {
+      alert('Failed to add lesson.');
+    } finally {
+      setAddingLesson(false);
+    }
+  };
+
   if (loading) return <div className="p-20 text-center animate-pulse">Loading Course Details...</div>;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
+    <div className="max-w-4xl mx-auto px-4 py-12">
       <div className="mb-10">
         <a href="#/teacher-dashboard" className="text-indigo-600 font-bold mb-2 inline-block hover:underline">&larr; Back to Dashboard</a>
         <h1 className={`text-4xl font-black tracking-tight ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>
@@ -71,7 +117,8 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
         </h1>
       </div>
 
-      <div className={`p-8 rounded-3xl shadow-lg border ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+      <div className={`p-8 rounded-3xl shadow-lg border mb-12 ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+        <h2 className={`text-2xl font-bold mb-6 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Course Details</h2>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className={`block text-sm font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Course Title</label>
@@ -140,6 +187,129 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
           </button>
         </form>
       </div>
+
+      {/* Curriculum Management Section */}
+      {courseId && (
+        <div className={`p-8 rounded-3xl shadow-lg border ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+          <h2 className={`text-2xl font-bold mb-6 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Curriculum</h2>
+          
+          <div className="space-y-4 mb-10">
+             {lessons.length === 0 ? (
+               <p className="text-slate-400 italic">No lessons added yet.</p>
+             ) : (
+               lessons.map((lesson, idx) => (
+                 <div key={lesson.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center space-x-4">
+                       <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center">{idx + 1}</span>
+                       <div>
+                          <p className="font-bold text-slate-900">{lesson.title}</p>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{lesson.type}</p>
+                       </div>
+                    </div>
+                 </div>
+               ))
+             )}
+          </div>
+
+          <div className="border-t border-slate-100 pt-8">
+            <h3 className={`text-lg font-bold mb-4 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Add New Lesson</h3>
+            <form onSubmit={handleAddLesson} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-2">
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Lesson Title</label>
+                   <input 
+                      type="text" 
+                      required 
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                      value={lessonForm.title}
+                      onChange={e => setLessonForm({...lessonForm, title: e.target.value})}
+                      placeholder="Introduction to..."
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Type</label>
+                   <select 
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white"
+                      value={lessonForm.type}
+                      onChange={e => setLessonForm({...lessonForm, type: e.target.value as LessonType})}
+                   >
+                     <option value={LessonType.VIDEO}>Video</option>
+                     <option value={LessonType.PDF}>PDF Document</option>
+                     <option value={LessonType.TEXT}>Text / Article</option>
+                     <option value={LessonType.ASSIGNMENT}>Assignment</option>
+                   </select>
+                </div>
+              </div>
+
+              {/* Dynamic Content Inputs */}
+              <div>
+                 {lessonForm.type === LessonType.VIDEO && (
+                    <>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Video Embed URL</label>
+                      <input 
+                        type="text" 
+                        required 
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                        value={lessonForm.content}
+                        onChange={e => setLessonForm({...lessonForm, content: e.target.value})}
+                        placeholder="https://www.youtube.com/embed/..."
+                      />
+                    </>
+                 )}
+
+                 {lessonForm.type === LessonType.PDF && (
+                    <>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Upload PDF</label>
+                      <input 
+                        type="file" 
+                        required 
+                        accept=".pdf"
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white"
+                        onChange={e => setLessonForm({...lessonForm, file: e.target.files?.[0] || null})}
+                      />
+                    </>
+                 )}
+
+                 {lessonForm.type === LessonType.TEXT && (
+                    <>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Lesson Content</label>
+                      <textarea 
+                        required 
+                        rows={6}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                        value={lessonForm.content}
+                        onChange={e => setLessonForm({...lessonForm, content: e.target.value})}
+                        placeholder="Write your article or reading material here..."
+                      />
+                    </>
+                 )}
+
+                 {lessonForm.type === LessonType.ASSIGNMENT && (
+                    <>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assignment Instructions</label>
+                      <textarea 
+                        required 
+                        rows={6}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                        value={lessonForm.content}
+                        onChange={e => setLessonForm({...lessonForm, content: e.target.value})}
+                        placeholder="Describe the project requirements..."
+                      />
+                    </>
+                 )}
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={addingLesson}
+                className="w-full py-3 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 transition-colors"
+              >
+                 {addingLesson ? 'Adding Lesson...' : '+ Add to Curriculum'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
