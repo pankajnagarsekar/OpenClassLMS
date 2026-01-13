@@ -142,7 +142,14 @@ const AdminDashboard: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 border border-slate-100">
             <h3 className="text-xl font-black text-slate-900 mb-2">Force Password Reset</h3>
-            <input type="password" placeholder="New strong password" className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-600 mb-6" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoFocus />
+            <input 
+              type="password" 
+              placeholder="New strong password" 
+              className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-600 mb-6 text-slate-900" 
+              value={newPassword} 
+              onChange={e => setNewPassword(e.target.value)} 
+              autoFocus 
+            />
             <div className="flex space-x-3">
               <button onClick={() => setResetModal(null)} className="flex-grow py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancel</button>
               <button onClick={handleResetPassword} disabled={!newPassword} className="flex-grow py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100">Update Access</button>

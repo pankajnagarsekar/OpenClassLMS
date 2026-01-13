@@ -3,8 +3,10 @@ import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { Course } from '../types';
 import { CourseCard } from '../components/CourseCard';
+import { useSettings } from '../context/SettingsContext';
 
 const Dashboard: React.FC = () => {
+  const { settings } = useSettings();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,8 @@ const Dashboard: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <div className="mb-10">
-        <h1 className="text-3xl font-extrabold text-slate-900">Explore Courses</h1>
-        <p className="mt-2 text-slate-600">Master new skills with our expert-led classes.</p>
+        <h1 className={`text-3xl font-extrabold ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Explore Courses</h1>
+        <p className={`mt-2 ${settings.ENABLE_DARK_MODE ? 'text-slate-400' : 'text-slate-600'}`}>Master new skills with our expert-led classes.</p>
       </div>
 
       {error ? (

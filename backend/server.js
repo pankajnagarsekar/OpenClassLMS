@@ -35,22 +35,35 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Associations
+
+// 1. Enrollment Relationship (Many-to-Many)
 User.belongsToMany(Course, { through: Enrollment, foreignKey: 'user_id' });
 Course.belongsToMany(User, { through: Enrollment, foreignKey: 'course_id' });
+
+// 2. Teacher Relationship (One-to-Many)
+Course.belongsTo(User, { foreignKey: 'teacher_id', as: 'Teacher' });
+User.hasMany(Course, { foreignKey: 'teacher_id', as: 'TeachingCourses' });
+
+// 3. Course Content Relationships
 Course.hasMany(Lesson, { foreignKey: 'course_id' });
 Lesson.belongsTo(Course, { foreignKey: 'course_id' });
 Course.hasMany(Announcement, { foreignKey: 'course_id' });
 Announcement.belongsTo(Course, { foreignKey: 'course_id' });
 Lesson.hasMany(Question, { foreignKey: 'lesson_id' });
 Question.belongsTo(Lesson, { foreignKey: 'lesson_id' });
+
+// 4. Submission & Progress Relationships
 User.hasMany(Submission, { foreignKey: 'user_id', onDelete: 'CASCADE' });
 Submission.belongsTo(User, { foreignKey: 'user_id' });
 Lesson.hasMany(Submission, { foreignKey: 'lesson_id', onDelete: 'CASCADE' });
 Submission.belongsTo(Lesson, { foreignKey: 'lesson_id' });
+
 User.hasMany(AssignmentSubmission, { foreignKey: 'user_id', onDelete: 'CASCADE' });
 AssignmentSubmission.belongsTo(User, { foreignKey: 'user_id' });
 Lesson.hasMany(AssignmentSubmission, { foreignKey: 'lesson_id', onDelete: 'CASCADE' });
 AssignmentSubmission.belongsTo(Lesson, { foreignKey: 'lesson_id' });
+
+// 5. Certificate Relationships
 User.hasMany(Certificate, { foreignKey: 'user_id', onDelete: 'CASCADE' });
 Certificate.belongsTo(User, { foreignKey: 'user_id' });
 Course.hasMany(Certificate, { foreignKey: 'course_id', onDelete: 'CASCADE' });
@@ -302,7 +315,66 @@ app.post('/api/admin/users/:id/reset-password', authenticateToken, adminAuth, as
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- UPDATED CORE ROUTES ---
+// --- TEACHER & COURSE ROUTES ---
+
+app.get('/api/teacher/my-courses', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied: Teachers only' });
+    
+    const courses = await Course.findAll({ 
+      where: { teacher_id: req.user.id },
+      include: [
+        { model: Enrollment }, // To count students
+        { model: Lesson } // To count lessons
+      ]
+    });
+    
+    // Transform for dashboard
+    const data = courses.map(c => ({
+      id: c.id,
+      title: c.title,
+      student_count: c.Enrollments.length,
+      lesson_count: c.Lessons.length,
+      createdAt: c.createdAt
+    }));
+
+    res.json(data);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.post('/api/courses', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied: Teachers only' });
+    
+    const { title, description, thumbnail_url, video_embed_url, access_days } = req.body;
+    
+    const course = await Course.create({
+      title,
+      description,
+      thumbnail_url,
+      video_embed_url,
+      access_days: access_days || 365,
+      teacher_id: req.user.id
+    });
+
+    res.status(201).json(course);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/courses/:id', authenticateToken, async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (course.teacher_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    await course.update(req.body);
+    res.json(course);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// --- CORE ROUTES ---
 
 app.get('/api/courses', async (req, res) => {
   try {
@@ -361,8 +433,6 @@ app.get('/api/student/dashboard', authenticateToken, async (req, res) => {
 });
 
 // ... (Other routes: Post Announcements, Get Announcements, Gradebook, Submissions, etc. - kept as is) ...
-// For brevity, assuming standard CRUD for other entities remains, but skipping full repetition unless changes needed.
-// Only critical logic changes above.
 
 // Seed Settings & Start
 const seedSettings = async () => {

@@ -4,6 +4,8 @@ import { Navbar } from './components/Navbar';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import StudentDashboard from './pages/StudentDashboard';
+import TeacherDashboard from './pages/TeacherDashboard';
+import ManageCourse from './pages/ManageCourse';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSettings from './pages/AdminSettings';
 import TeacherGradebook from './pages/TeacherGradebook';
@@ -31,7 +33,14 @@ const AppContent: React.FC = () => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
-    window.location.hash = data.user.role === UserRole.ADMIN ? '#/admin' : '#/student-dashboard';
+    // Redirect based on role
+    if (data.user.role === UserRole.ADMIN) {
+      window.location.hash = '#/admin';
+    } else if (data.user.role === UserRole.TEACHER) {
+      window.location.hash = '#/teacher-dashboard';
+    } else {
+      window.location.hash = '#/student-dashboard';
+    }
   };
 
   const handleLogout = () => {
@@ -64,11 +73,18 @@ const AppContent: React.FC = () => {
     if (hash.startsWith('#/verify/')) {
       return <VerifyEmail token={hash.split('/').pop() || ''} />;
     }
+    if (hash === '#/teacher/courses/new') {
+       return user?.role === UserRole.TEACHER ? <ManageCourse /> : <Home />;
+    }
+    if (hash.startsWith('#/teacher/courses/')) {
+       return user?.role === UserRole.TEACHER ? <ManageCourse courseId={hash.split('/').pop() || ''} /> : <Home />;
+    }
 
     switch (hash) {
       case '#/': return <Home />;
       case '#/dashboard': return <Dashboard />;
       case '#/student-dashboard': return user ? <StudentDashboard /> : <Login onLoginSuccess={handleLoginSuccess} />;
+      case '#/teacher-dashboard': return user?.role === UserRole.TEACHER ? <TeacherDashboard /> : <Home />;
       case '#/admin': return user?.role === UserRole.ADMIN ? <AdminDashboard /> : <Home />;
       case '#/admin/settings': return user?.role === UserRole.ADMIN ? <AdminSettings /> : <Home />;
       case '#/login': return <Login onLoginSuccess={handleLoginSuccess} />;
