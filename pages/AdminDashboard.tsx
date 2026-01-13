@@ -1,158 +1,197 @@
 
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
-import { User, Course, AdminStats, UserRole } from '../types';
+import { User, AdminStats, UserRole } from '../types';
 
 const AdminDashboard: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'teachers' | 'students'>('teachers');
+  const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [resetModal, setResetModal] = useState<{ userId: number; name: string } | null>(null);
-  const [newPassword, setNewPassword] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editUser, setEditUser] = useState<Partial<User> & { password?: string } | null>(null);
 
   const fetchAdminData = async () => {
     try {
-      const [statsRes, usersRes, coursesRes] = await Promise.all([
-        api.get('/admin/stats'),
-        api.get('/admin/users'),
-        api.get('/courses')
-      ]);
+      const [statsRes, usersRes] = await Promise.all([api.get('/admin/stats'), api.get('/admin/users')]);
       setStats(statsRes.data);
       setUsers(usersRes.data);
-      setCourses(coursesRes.data);
-    } catch (err) {
-      console.error("Admin Fetch Error:", err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); }
   };
 
-  useEffect(() => {
-    fetchAdminData();
-  }, []);
+  useEffect(() => { fetchAdminData(); }, []);
 
-  const toggleUserStatus = async (userId: number) => {
+  const handleUpdateUser = async () => {
+    if (!editUser || !editUser.id) return;
     try {
-      await api.put(`/admin/users/${userId}/toggle-status`);
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: !u.is_active } : u));
-    } catch (err) {
-      alert("Failed to toggle user status.");
-    }
+      await api.put(`/admin/users/${editUser.id}`, {
+        name: editUser.name,
+        email: editUser.email,
+        role: editUser.role,
+        password: editUser.password
+      });
+      alert('User credentials updated successfully.');
+      setEditUser(null);
+      fetchAdminData();
+    } catch (err: any) { alert(err.response?.data?.message || 'Update failed'); }
   };
 
-  const handleDeleteUser = async (userId: number) => {
-    if (!confirm("Are you sure? This delete is permanent.")) return;
+  const handleDelete = async (id: number) => {
+    if (!confirm('Permanently delete this user?')) return;
     try {
-      await api.delete(`/admin/users/${userId}`);
-      setUsers(prev => prev.filter(u => u.id !== userId));
-    } catch (err) {
-      alert("Failed to delete user.");
-    }
+      await api.delete(`/admin/users/${id}`);
+      fetchAdminData();
+    } catch (err: any) { alert(err.response?.data?.message || 'Delete failed'); }
   };
 
-  const handleResetPassword = async () => {
-    if (!resetModal || !newPassword) return;
-    try {
-      await api.post(`/admin/users/${resetModal.userId}/reset-password`, { newPassword });
-      alert(`Password for ${resetModal.name} updated.`);
-      setResetModal(null);
-      setNewPassword('');
-    } catch (err) {
-      alert("Failed to reset password.");
+  // Filter Logic
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = 
+      u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      u.email.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (activeTab === 'teachers') {
+      return (u.role === 'teacher') && matchesSearch;
+    } else {
+      return (u.role === 'student' || u.role === 'admin') && matchesSearch;
     }
-  };
-
-  if (loading) return <div className="p-20 text-center animate-pulse">Vault Loading...</div>;
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-12">
-        <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter">Administration</h1>
-          <p className="text-slate-500 mt-2">Manage lifecycle, access control, and moderate content.</p>
-        </div>
-        <button onClick={fetchAdminData} className="px-6 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Refresh Data</button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-        {[
-          { label: 'Users', value: stats?.totalUsers || 0, icon: '👥', color: 'bg-indigo-50 text-indigo-600' },
-          { label: 'Courses', value: stats?.totalCourses || 0, icon: '📚', color: 'bg-emerald-50 text-emerald-600' },
-          { label: 'Submissions', value: stats?.totalSubmissions || 0, icon: '✍️', color: 'bg-orange-50 text-orange-600' },
-        ].map((item, idx) => (
-          <div key={idx} className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-6">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl ${item.color}`}>{item.icon}</div>
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{item.label}</p>
-              <p className="text-3xl font-black text-slate-900">{item.value.toLocaleString()}</p>
-            </div>
+      <div className="flex justify-between items-center mb-10">
+        <h1 className="text-4xl font-black text-slate-900">Admin Control</h1>
+        <div className="flex space-x-6">
+          <div className="text-right">
+             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Users</p>
+             <p className="text-2xl font-black">{stats?.totalUsers || 0}</p>
           </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-12">
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-            <h2 className="font-black text-slate-800 uppercase tracking-tight text-sm">User Identity & Status</h2>
-            <span className="text-xs font-bold text-slate-400">{users.length} Records</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
-                  <th className="px-6 py-4">Name & Access</th>
-                  <th className="px-6 py-4">Lifecycle Status</th>
-                  <th className="px-6 py-4 text-right">Administrative Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {users.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-slate-900">{user.name}</p>
-                      <p className="text-xs text-slate-400">{user.email}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <span className={`w-2 h-2 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${user.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                          {user.is_active ? 'Active' : 'Banned'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end space-x-4">
-                        <button onClick={() => toggleUserStatus(user.id)} className={`text-xs font-bold ${user.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'}`}>
-                          {user.is_active ? 'Deactivate' : 'Restore Access'}
-                        </button>
-                        <button onClick={() => setResetModal({ userId: user.id, name: user.name })} className="text-indigo-600 hover:text-indigo-800 font-bold text-xs">Reset Pass</button>
-                        <button onClick={() => handleDeleteUser(user.id)} className="text-slate-400 hover:text-red-600 font-bold text-xs">Purge</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="text-right">
+             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Courses</p>
+             <p className="text-2xl font-black">{stats?.totalCourses || 0}</p>
           </div>
         </div>
       </div>
 
-      {resetModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 border border-slate-100">
-            <h3 className="text-xl font-black text-slate-900 mb-2">Force Password Reset</h3>
-            <input 
-              type="password" 
-              placeholder="New strong password" 
-              className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-600 mb-6 text-slate-900" 
-              value={newPassword} 
-              onChange={e => setNewPassword(e.target.value)} 
-              autoFocus 
-            />
-            <div className="flex space-x-3">
-              <button onClick={() => setResetModal(null)} className="flex-grow py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancel</button>
-              <button onClick={handleResetPassword} disabled={!newPassword} className="flex-grow py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100">Update Access</button>
+      <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 mb-6">
+        <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button onClick={() => setActiveTab('teachers')} className={`px-6 py-2 rounded-lg font-bold transition-all ${activeTab === 'teachers' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Teachers</button>
+            <button onClick={() => setActiveTab('students')} className={`px-6 py-2 rounded-lg font-bold transition-all ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Students</button>
+        </div>
+        <input 
+          type="text" 
+          placeholder="Search by name or email..." 
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="flex-grow px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">User Details</th>
+              <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Role</th>
+              
+              {activeTab === 'teachers' ? (
+                <>
+                    <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Courses Created</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Total Students</th>
+                </>
+              ) : (
+                <>
+                    <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Enrolled Courses</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Teachers</th>
+                </>
+              )}
+              
+              <th className="px-6 py-4 text-right text-xs font-black text-slate-400 uppercase tracking-widest">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredUsers.map(user => (
+              <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-xs mr-3">
+                        {user.name.charAt(0)}
+                    </div>
+                    <div>
+                        <p className="font-bold text-slate-900 text-sm">{user.name}</p>
+                        <p className="text-xs text-slate-500">{user.email}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${user.role === 'admin' ? 'bg-purple-100 text-purple-600' : user.role === 'teacher' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>
+                    {user.role}
+                  </span>
+                </td>
+                
+                {activeTab === 'teachers' ? (
+                    <>
+                        <td className="px-6 py-4">
+                            <span className="font-bold text-slate-700">{user.TeachingCourses?.length || 0}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                            <span className="font-bold text-slate-700">
+                                {user.TeachingCourses?.reduce((acc: number, course: any) => acc + (course.Enrollments?.length || 0), 0) || 0}
+                            </span>
+                        </td>
+                    </>
+                ) : (
+                    <>
+                         <td className="px-6 py-4">
+                            <span className="font-bold text-slate-700">{user.Enrollments?.length || 0}</span>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500 max-w-xs truncate">
+                            {user.Enrollments?.map((e: any) => e.Course?.Teacher?.name).filter(Boolean).join(', ') || '-'}
+                        </td>
+                    </>
+                )}
+
+                <td className="px-6 py-4 text-right space-x-2">
+                  <button onClick={() => setEditUser(user)} className="text-indigo-600 font-bold text-xs hover:underline bg-indigo-50 px-3 py-1 rounded-lg">Edit / Reset Password</button>
+                  {user.id !== 1 && (
+                    <button onClick={() => handleDelete(user.id)} className="text-red-500 font-bold text-xs hover:underline bg-red-50 px-3 py-1 rounded-lg">Delete</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filteredUsers.length === 0 && <div className="p-8 text-center text-slate-400">No users found.</div>}
+      </div>
+
+      {editUser && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-black mb-6">Edit User Credentials</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">Name</label>
+                <input type="text" value={editUser.name} onChange={e => setEditUser({...editUser, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">Email</label>
+                <input type="email" value={editUser.email} onChange={e => setEditUser({...editUser, email: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">Role</label>
+                <select value={editUser.role} onChange={e => setEditUser({...editUser, role: e.target.value as UserRole})} className="w-full px-4 py-3 bg-slate-50 rounded-xl">
+                  <option value={UserRole.STUDENT}>Student</option>
+                  <option value={UserRole.TEACHER}>Teacher</option>
+                  <option value={UserRole.ADMIN}>Admin</option>
+                </select>
+              </div>
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-indigo-600 mb-1 uppercase">New Password</label>
+                <input type="password" placeholder="Enter new password to reset" value={editUser.password || ''} onChange={e => setEditUser({...editUser, password: e.target.value})} className="w-full px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-900 placeholder-indigo-300" />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button onClick={() => setEditUser(null)} className="flex-grow py-3 bg-slate-100 font-bold rounded-xl text-slate-600">Cancel</button>
+                <button onClick={handleUpdateUser} className="flex-grow py-3 bg-indigo-600 font-bold rounded-xl text-white shadow-lg shadow-indigo-200">Save Changes</button>
+              </div>
             </div>
           </div>
         </div>

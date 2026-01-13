@@ -35,6 +35,16 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
 
   useEffect(() => { fetchData(); }, [courseId]);
 
+  const handleEnroll = async () => {
+    try {
+      await api.post(`/courses/${courseId}/enroll`);
+      alert("Enrolled successfully!");
+      fetchData(); // Reload to update UI state
+    } catch (err) {
+      alert("Failed to enroll.");
+    }
+  };
+
   const handleFileUpload = async () => {
     if (!file || !activeLesson) return;
     const formData = new FormData();
@@ -67,10 +77,16 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     } catch (err) { alert("Failed."); }
   };
 
+  // Safe URL generation
+  const getContentLink = (path: string | undefined | null) => {
+    if (!path) return '#';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    return `http://localhost:5000/${cleanPath}`;
+  };
+
   if (loading) return <div className="p-20 text-center animate-pulse">Loading Classroom...</div>;
   if (!course) return <div className="p-20 text-center text-red-500 font-bold">Course not found.</div>;
-
-  const API_BASE = (import.meta as any).env?.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
 
   const renderActiveContent = () => {
     if (!activeLesson) return null;
@@ -83,7 +99,15 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
         return (
           <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-200">
             <div className="aspect-video bg-slate-900">
-              <iframe className="w-full h-full" src={activeLesson.content_url} title={activeLesson.title} frameBorder="0" allowFullScreen></iframe>
+              {activeLesson.content_url && (
+                <iframe 
+                  className="w-full h-full" 
+                  src={getContentLink(activeLesson.content_url)} 
+                  title={activeLesson.title} 
+                  frameBorder="0" 
+                  allowFullScreen
+                ></iframe>
+              )}
             </div>
             <div className="p-8 flex justify-between items-start">
               <div>
@@ -103,7 +127,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-200">
             <div className="aspect-video bg-slate-900 flex flex-col items-center justify-center text-white space-y-6">
               <span className="text-7xl">📄</span>
-              <a href={`${API_BASE}${activeLesson.content_url}`} target="_blank" className="px-10 py-4 bg-white text-indigo-600 rounded-2xl font-black hover:bg-slate-100 transition-all">Download PDF</a>
+              <a href={getContentLink(activeLesson.content_url)} target="_blank" className="px-10 py-4 bg-white text-indigo-600 rounded-2xl font-black hover:bg-slate-100 transition-all">Download PDF</a>
             </div>
             <div className="p-8 flex justify-between">
               <h1 className="text-3xl font-bold text-slate-900">{activeLesson.title}</h1>
@@ -119,7 +143,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
             <h1 className="text-3xl font-bold text-slate-900 mb-4">{activeLesson.title}</h1>
             <p className="text-slate-500 mb-10">Submit your project or assignment files here for instructor review.</p>
 
-            {userRole === UserRole.TEACHER ? (
+            {userRole === UserRole.TEACHER || userRole === UserRole.ADMIN ? (
               <div>
                 <button 
                   onClick={() => { setView('assignment-admin'); fetchSubmissions(activeLesson.id); }}
@@ -138,7 +162,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                 </div>
                 <div className="mb-4">
                   <p className="text-xs font-bold text-slate-400 mb-1">Submitted File</p>
-                  <a href={`${API_BASE}${mySubmission.file_path}`} target="_blank" className="text-indigo-600 font-bold hover:underline">Download my submission</a>
+                  <a href={getContentLink(mySubmission.file_path)} target="_blank" className="text-indigo-600 font-bold hover:underline">Download my submission</a>
                 </div>
                 {mySubmission.feedback && (
                   <div>
@@ -189,7 +213,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
             {settings.SHOW_COURSE_ANNOUNCEMENTS && (
               <button onClick={() => setView('announcements')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'announcements' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50/10'}`}>News Feed</button>
             )}
-            {userRole === UserRole.TEACHER && <a href={`#/gradebook/${courseId}`} className="text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg text-emerald-600 hover:bg-emerald-50 text-center border border-emerald-100">Gradebook</a>}
+            {(userRole === UserRole.TEACHER || userRole === UserRole.ADMIN) && <a href={`#/gradebook/${courseId}`} className="text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg text-emerald-600 hover:bg-emerald-50 text-center border border-emerald-100">Gradebook</a>}
           </div>
         </div>
 
@@ -203,6 +227,9 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
               </div>
             </button>
           ))}
+          {view === 'content' && course.Lessons?.length === 0 && (
+             <div className="p-8 text-center text-slate-400 text-sm">No lessons yet.</div>
+          )}
         </div>
       </div>
 
@@ -234,7 +261,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                         <p className="text-xs text-slate-400">{sub.User?.email}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <a href={`${API_BASE}${sub.file_path}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:underline">Download</a>
+                        <a href={getContentLink(sub.file_path)} target="_blank" className="text-xs font-bold text-indigo-600 hover:underline">Download</a>
                       </td>
                       <td className="px-6 py-4 font-black text-slate-900">{sub.grade !== null ? `${sub.grade}%` : '-'}</td>
                       <td className="px-6 py-4 text-right">
@@ -269,7 +296,18 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           ) : activeLesson ? (
             renderActiveContent()
           ) : (
-            <div className="text-center py-20"><button onClick={() => fetchData()} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black">Enroll Now</button></div>
+            <div className="text-center py-20">
+              {userRole === UserRole.TEACHER || userRole === UserRole.ADMIN ? (
+                <button onClick={() => window.location.hash = `#/teacher/courses/${course.id}`} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-lg">
+                  + Add Curriculum Content
+                </button>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <h3 className="text-xl font-bold text-slate-900 mb-4">Start Learning Today</h3>
+                  <button onClick={handleEnroll} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all active:scale-95">Enroll Now</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

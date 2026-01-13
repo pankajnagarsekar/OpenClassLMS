@@ -26,7 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
               {user && user.role === UserRole.STUDENT && (
                 <a href="#/student-dashboard" className={`text-sm font-bold transition-colors ${settings.ENABLE_DARK_MODE ? 'text-slate-400 hover:text-indigo-400' : 'text-slate-500 hover:text-indigo-600'}`}>My Studies</a>
               )}
-              {user && user.role === UserRole.TEACHER && (
+              {user && (user.role === UserRole.TEACHER || user.role === UserRole.ADMIN) && (
                 <a href="#/teacher-dashboard" className={`text-sm font-bold transition-colors ${settings.ENABLE_DARK_MODE ? 'text-indigo-400' : 'text-indigo-600'}`}>Instructor Panel</a>
               )}
               {user?.role === UserRole.ADMIN && (
