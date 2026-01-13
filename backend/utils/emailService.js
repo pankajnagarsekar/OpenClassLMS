@@ -13,8 +13,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendVerificationEmail = async (userEmail, token) => {
-  // FIX: Update to Vite default port 5173
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   const verificationLink = `${frontendUrl}/#/verify/${token}`;
 
   // Local Development Logic: Skip actual email sending if configured
