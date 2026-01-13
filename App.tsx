@@ -5,16 +5,19 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminSettings from './pages/AdminSettings';
 import TeacherGradebook from './pages/TeacherGradebook';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import CoursePlayer from './pages/CoursePlayer';
 import VerifyEmail from './pages/VerifyEmail';
 import { User, AuthResponse, UserRole } from './types';
+import { SettingsProvider, useSettings } from './context/SettingsContext';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentHash, setCurrentHash] = useState(window.location.hash || '#/');
+  const { settings, loading } = useSettings();
 
   useEffect(() => {
     const handleHashChange = () => setCurrentHash(window.location.hash);
@@ -39,6 +42,17 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    // Maintenance Mode Check (Admins bypass)
+    if (settings.MAINTENANCE_MODE && (!user || user.role !== UserRole.ADMIN)) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
+          <div className="text-6xl mb-4">🏗️</div>
+          <h1 className="text-4xl font-black text-slate-800 mb-2">Under Maintenance</h1>
+          <p className="text-slate-500 text-lg">We are upgrading OpenClass. Please check back shortly.</p>
+        </div>
+      );
+    }
+
     const hash = currentHash;
     if (hash.startsWith('#/course/')) {
       return <CoursePlayer courseId={hash.split('/').pop() || ''} userRole={user?.role} />;
@@ -56,20 +70,31 @@ const App: React.FC = () => {
       case '#/dashboard': return <Dashboard />;
       case '#/student-dashboard': return user ? <StudentDashboard /> : <Login onLoginSuccess={handleLoginSuccess} />;
       case '#/admin': return user?.role === UserRole.ADMIN ? <AdminDashboard /> : <Home />;
+      case '#/admin/settings': return user?.role === UserRole.ADMIN ? <AdminSettings /> : <Home />;
       case '#/login': return <Login onLoginSuccess={handleLoginSuccess} />;
       case '#/register': return <Register />;
       default: return <Home />;
     }
   };
 
+  if (loading) return null;
+
   return (
-    <div className="min-h-screen flex flex-col selection:bg-indigo-100">
+    <div className={`min-h-screen flex flex-col selection:bg-indigo-100 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <Navbar user={user} onLogout={handleLogout} />
       <main className="flex-grow">{renderContent()}</main>
-      <footer className="bg-slate-900 py-16 text-white text-center text-xs opacity-50">
+      <footer className={`py-16 text-center text-xs opacity-50 ${settings.ENABLE_DARK_MODE ? 'bg-black text-white' : 'bg-slate-900 text-white'}`}>
         &copy; {new Date().getFullYear()} OpenClass LMS Infrastructure. Professional Grade.
       </footer>
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <SettingsProvider>
+      <AppContent />
+    </SettingsProvider>
   );
 };
 

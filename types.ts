@@ -127,3 +127,14 @@ export interface AuthResponse {
   token: string;
   user: User;
 }
+
+export interface SystemSettings {
+  ENABLE_PUBLIC_REGISTRATION: boolean;
+  REQUIRE_EMAIL_VERIFICATION: boolean;
+  MAINTENANCE_MODE: boolean;
+  ENABLE_CERTIFICATES: boolean;
+  ENABLE_STUDENT_UPLOADS: boolean;
+  SHOW_COURSE_ANNOUNCEMENTS: boolean;
+  SHOW_FEATURED_COURSES: boolean;
+  ENABLE_DARK_MODE: boolean;
+}

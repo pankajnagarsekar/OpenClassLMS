@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { DashboardCourse } from '../types';
+import { useSettings } from '../context/SettingsContext';
 
 const StudentDashboard: React.FC = () => {
+  const { settings } = useSettings();
   const [enrolledCourses, setEnrolledCourses] = useState<DashboardCourse[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +37,7 @@ const StudentDashboard: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 py-16">
       <div className="mb-12">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tight">Student Workspace</h1>
+        <h1 className={`text-4xl font-black tracking-tight ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Student Workspace</h1>
         <p className="text-slate-500 mt-2">Active enrollments and lifetime achievements.</p>
       </div>
 
@@ -43,7 +45,7 @@ const StudentDashboard: React.FC = () => {
         {enrolledCourses.map(course => {
           const isExpired = new Date(course.expires_at) < new Date();
           return (
-            <div key={course.course_id} className={`bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col group transition-all ${isExpired ? 'opacity-70 saturate-50' : 'hover:-translate-y-1 hover:shadow-md'}`}>
+            <div key={course.course_id} className={`rounded-3xl shadow-sm border overflow-hidden flex flex-col group transition-all ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} ${isExpired ? 'opacity-70 saturate-50' : 'hover:-translate-y-1 hover:shadow-md'}`}>
               <div className="aspect-video relative overflow-hidden bg-slate-100">
                 <img src={course.thumbnail_url || `https://picsum.photos/seed/${course.course_id}/400/225`} className="w-full h-full object-cover" />
                 <div className="absolute top-4 right-4">
@@ -58,13 +60,13 @@ const StudentDashboard: React.FC = () => {
               </div>
 
               <div className="p-8 flex flex-col flex-grow">
-                <h3 className="text-xl font-bold text-slate-900 mb-2">{course.title}</h3>
+                <h3 className={`text-xl font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h3>
                 <div className="mt-4 mb-6">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Mastery</span>
                     <span className="text-xs font-black text-indigo-600">{course.progress_percentage}%</span>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className={`w-full h-2 rounded-full overflow-hidden ${settings.ENABLE_DARK_MODE ? 'bg-slate-700' : 'bg-slate-100'}`}>
                     <div className="h-full bg-indigo-600 transition-all duration-1000" style={{ width: `${course.progress_percentage}%` }} />
                   </div>
                 </div>
@@ -73,8 +75,8 @@ const StudentDashboard: React.FC = () => {
                   <button onClick={() => !isExpired && (window.location.hash = `#/course/${course.course_id}`)} disabled={isExpired} className={`w-full py-3 rounded-xl font-bold transition-all ${isExpired ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100'}`}>
                     {isExpired ? 'Enrollment Terminated' : 'Continue Study'}
                   </button>
-                  {course.progress_percentage === 100 && (
-                    <button onClick={() => handleDownloadCertificate(course.course_id)} className="w-full py-3 bg-emerald-50 text-emerald-700 rounded-xl font-bold border border-emerald-100 hover:bg-emerald-100 flex items-center justify-center space-x-2">
+                  {settings.ENABLE_CERTIFICATES && course.progress_percentage === 100 && (
+                    <button onClick={() => handleDownloadCertificate(course.course_id)} className={`w-full py-3 rounded-xl font-bold border flex items-center justify-center space-x-2 ${settings.ENABLE_DARK_MODE ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900 hover:bg-emerald-900/40' : 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100'}`}>
                       <span>Download Certificate</span> <span>🎓</span>
                     </button>
                   )}

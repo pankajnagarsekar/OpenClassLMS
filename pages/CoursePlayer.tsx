@@ -4,8 +4,10 @@ import api from '../services/api';
 import { Course, Lesson, LessonType, UserRole, AssignmentSubmission } from '../types';
 import { QuizView } from '../components/QuizView';
 import { AnnouncementsTab } from '../components/AnnouncementsTab';
+import { useSettings } from '../context/SettingsContext';
 
 const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ courseId, userRole }) => {
+  const { settings } = useSettings();
   const [course, setCourse] = useState<Course | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [view, setView] = useState<'content' | 'announcements' | 'assignment-admin'>('content');
@@ -147,18 +149,26 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center">
-                  <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="assignment-upload" />
-                  <label htmlFor="assignment-upload" className="cursor-pointer">
-                    <span className="text-4xl block mb-4">📤</span>
-                    <span className="text-slate-600 font-bold block">{file ? file.name : 'Select file to upload'}</span>
-                    <span className="text-xs text-slate-400 mt-2 block">PDF, Word, or ZIP accepted</span>
-                  </label>
-                </div>
-                {file && (
-                  <button onClick={handleFileUpload} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-all">
-                    Submit Assignment
-                  </button>
+                {settings.ENABLE_STUDENT_UPLOADS ? (
+                  <>
+                    <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center">
+                      <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="assignment-upload" />
+                      <label htmlFor="assignment-upload" className="cursor-pointer">
+                        <span className="text-4xl block mb-4">📤</span>
+                        <span className="text-slate-600 font-bold block">{file ? file.name : 'Select file to upload'}</span>
+                        <span className="text-xs text-slate-400 mt-2 block">PDF, Word, or ZIP accepted</span>
+                      </label>
+                    </div>
+                    {file && (
+                      <button onClick={handleFileUpload} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-all">
+                        Submit Assignment
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="p-6 bg-orange-50 text-orange-700 rounded-xl border border-orange-100 font-bold text-center">
+                     File uploads are currently disabled by the system administrator.
+                  </div>
                 )}
               </div>
             )}
@@ -169,24 +179,26 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-[calc(100vh-80px)] bg-slate-50">
+    <div className={`flex flex-col lg:flex-row min-h-[calc(100vh-80px)] ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 text-slate-100' : 'bg-slate-50'}`}>
       {/* Sidebar */}
-      <div className="w-full lg:w-96 bg-white border-r border-slate-200 flex flex-col h-auto lg:h-[calc(100vh-80px)] sticky top-20">
-        <div className="p-8 border-b border-slate-100">
-          <h2 className="font-black text-slate-900 text-xl leading-tight mb-2">{course.title}</h2>
+      <div className={`w-full lg:w-96 border-r flex flex-col h-auto lg:h-[calc(100vh-80px)] sticky top-20 ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+        <div className={`p-8 border-b ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-100'}`}>
+          <h2 className={`font-black text-xl leading-tight mb-2 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h2>
           <div className="flex flex-col space-y-3 mt-4">
-            <button onClick={() => setView('content')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>Curriculum</button>
-            <button onClick={() => setView('announcements')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'announcements' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>News Feed</button>
+            <button onClick={() => setView('content')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50/10'}`}>Curriculum</button>
+            {settings.SHOW_COURSE_ANNOUNCEMENTS && (
+              <button onClick={() => setView('announcements')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'announcements' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50/10'}`}>News Feed</button>
+            )}
             {userRole === UserRole.TEACHER && <a href={`#/gradebook/${courseId}`} className="text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg text-emerald-600 hover:bg-emerald-50 text-center border border-emerald-100">Gradebook</a>}
           </div>
         </div>
 
         <div className="flex-grow overflow-y-auto">
           {view === 'content' && course.Lessons?.map((lesson: any) => (
-            <button key={lesson.id} onClick={() => { setActiveLesson(lesson); setView('content'); }} className={`w-full text-left px-8 py-5 flex items-start space-x-4 transition-all ${activeLesson?.id === lesson.id ? 'bg-indigo-50/50 border-r-4 border-indigo-600' : 'hover:bg-slate-50 border-r-4 border-transparent'}`}>
+            <button key={lesson.id} onClick={() => { setActiveLesson(lesson); setView('content'); }} className={`w-full text-left px-8 py-5 flex items-start space-x-4 transition-all ${activeLesson?.id === lesson.id ? 'bg-indigo-50/50 border-r-4 border-indigo-600' : 'hover:bg-slate-50/10 border-r-4 border-transparent'}`}>
               <div className="mt-1 flex-shrink-0">{(lesson.Submissions?.length > 0 || lesson.AssignmentSubmissions?.length > 0) ? '✅' : '▶️'}</div>
               <div className="flex-grow">
-                <p className={`text-sm font-black ${activeLesson?.id === lesson.id ? 'text-indigo-700' : 'text-slate-700'}`}>{lesson.title}</p>
+                <p className={`text-sm font-black ${activeLesson?.id === lesson.id ? 'text-indigo-600' : 'text-slate-500'}`}>{lesson.title}</p>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{lesson.type}</p>
               </div>
             </button>

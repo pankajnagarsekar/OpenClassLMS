@@ -2,8 +2,10 @@
 import React, { useState } from 'react';
 import api from '../services/api';
 import { UserRole } from '../types';
+import { useSettings } from '../context/SettingsContext';
 
 const Register: React.FC = () => {
+  const { settings } = useSettings();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -14,15 +16,32 @@ const Register: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  if (!settings.ENABLE_PUBLIC_REGISTRATION) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center">
+        <h2 className="text-3xl font-bold text-slate-900 mb-2">Registration Closed</h2>
+        <p className="text-slate-500">Public enrollment is currently disabled by the administrator.</p>
+        <a href="#/login" className="mt-6 text-indigo-600 font-bold hover:underline">Return to Login</a>
+      </div>
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      await api.post('/auth/register', formData);
-      setSuccess(true);
-      setTimeout(() => window.location.hash = '/login', 2000);
+      const res = await api.post('/auth/register', formData);
+      
+      // Check if the backend requires verification or skipped it
+      if (res.data.requireVerification === false) {
+        alert("Account created! Logging you in...");
+        window.location.hash = '/login';
+      } else {
+        setSuccess(true);
+        setTimeout(() => window.location.hash = '/login', 3000);
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed.');
     } finally {
@@ -46,7 +65,7 @@ const Register: React.FC = () => {
 
         {success && (
           <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 text-green-700 text-sm">
-            Registration successful! Redirecting to login...
+            Registration successful! Please check your email to verify your account.
           </div>
         )}
 
