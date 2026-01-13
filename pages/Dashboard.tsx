@@ -12,6 +12,16 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Role Check: Redirect Students
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user.role === 'student') {
+        window.location.hash = '#/student-dashboard';
+        return;
+      }
+    }
+
     // Security Check: If public registration is disabled, require login
     if (!settingsLoading && !settings.ENABLE_PUBLIC_REGISTRATION) {
        const token = localStorage.getItem('token');

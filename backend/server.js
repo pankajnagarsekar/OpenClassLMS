@@ -229,23 +229,45 @@ app.post('/api/auth/verify', async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// MODIFIED: Enrollment endpoint supporting manual assignment via email
 app.post('/api/courses/:id/enroll', authenticateToken, async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) return res.status(404).json({ message: 'Course not found' });
+
+    let userIdToEnroll = req.user.id;
+
+    // Check if Teacher/Admin is trying to enroll someone else by email
+    if (req.body.email) {
+      if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+         return res.status(403).json({ message: 'Only instructors can manually enroll students.' });
+      }
+      
+      // Teacher ownership check
+      if (req.user.role === 'teacher' && course.teacher_id !== req.user.id) {
+         return res.status(403).json({ message: 'You can only enroll students in your own courses.' });
+      }
+
+      const targetUser = await User.findOne({ where: { email: req.body.email } });
+      if (!targetUser) return res.status(404).json({ message: 'Student email not found.' });
+      userIdToEnroll = targetUser.id;
+    }
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + course.access_days);
 
     const [enrollment, created] = await Enrollment.findOrCreate({
-      where: { user_id: req.user.id, course_id: course.id },
+      where: { user_id: userIdToEnroll, course_id: course.id },
       defaults: { expires_at: expiresAt, is_active: true }
     });
+
     if (!created) {
       enrollment.is_active = true;
       enrollment.expires_at = expiresAt;
       await enrollment.save();
     }
-    res.json({ message: 'Successfully enrolled', enrollment });
+    
+    res.json({ message: 'Enrollment successful', enrollment });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -364,6 +386,40 @@ app.get('/api/teacher/my-courses', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// NEW: Get all students enrolled in Teacher's courses
+app.get('/api/teacher/students', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied.' });
+
+    const courses = await Course.findAll({
+      where: { teacher_id: req.user.id },
+      include: [{
+        model: Enrollment,
+        include: [{ model: User, attributes: ['name', 'email'] }]
+      }]
+    });
+
+    const students = [];
+    courses.forEach(course => {
+      if (course.Enrollments) {
+        course.Enrollments.forEach(en => {
+          if (en.User) {
+            students.push({
+              id: en.user_id,
+              name: en.User.name,
+              email: en.User.email,
+              course_title: course.title,
+              enrolled_at: en.enrolled_at
+            });
+          }
+        });
+      }
+    });
+
+    res.json(students);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied: Teachers only' });
@@ -423,7 +479,6 @@ app.get('/api/courses', async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// MODIFIED: Fetch Course Details (with intelligent enrollment check)
 app.get('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
     const courseId = req.params.id;
@@ -458,11 +513,9 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
 
     if (!course) return res.status(404).json({ message: 'Course not found' });
 
-    // Return object with 'is_enrolled' flag
     const courseData = course.toJSON();
     courseData.is_enrolled = isEnrolled;
     
-    // Ensure Lessons is empty if not authorized (security layer)
     if (!canAccessContent) {
         courseData.Lessons = []; 
     }
@@ -626,8 +679,6 @@ app.get('/api/courses/:id/gradebook', authenticateToken, async (req, res) => {
     });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
-
-// ... (Other routes unchanged) ...
 
 const seedSettings = async () => {
   const defaults = [
