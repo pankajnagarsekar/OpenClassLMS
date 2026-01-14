@@ -6,7 +6,6 @@ import { QuizView } from '../components/QuizView';
 import { AnnouncementsTab } from '../components/AnnouncementsTab';
 import { useSettings } from '../context/SettingsContext';
 
-// Extend Course type for internal state
 interface EnrichedCourse extends Course {
   is_enrolled?: boolean;
 }
@@ -52,12 +51,10 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       setLoading(true);
       const res = await api.get(`/courses/${courseId}`);
       setCourse(res.data);
-      // Default to first lesson only if no specific view is selected
       if (view === 'content' && res.data.Lessons?.length > 0 && !activeLesson) {
         setActiveLesson(res.data.Lessons[0]);
       }
       
-      // Check for completion and feedback
       const progress = calculateProgress(res.data);
       const hasFeedback = res.data.CourseFeedbacks && res.data.CourseFeedbacks.length > 0;
       if (progress === 100 && !hasFeedback && userRole === UserRole.STUDENT) {
@@ -106,7 +103,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       await api.post(`/courses/${courseId}/feedback`, { rating: feedbackRating, comment: feedbackComment });
       alert("Thank you for your feedback!");
       setShowFeedbackModal(false);
-      fetchData(); // Refresh to ensure backend knows feedback is submitted
+      fetchData(); 
     } catch (err) {
       alert("Failed to submit feedback.");
     } finally {
@@ -123,7 +120,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     }
   }, [courseId]);
 
-  // Handle Assignment Upload
   const handleFileUpload = async () => {
     if (!file || !activeLesson) return;
     const formData = new FormData();
@@ -138,7 +134,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     } catch (err) { alert("Upload failed."); }
   };
 
-  // Handle Discussion Actions
   const handleCreateTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -178,7 +173,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     } catch (err) { alert("Failed."); }
   };
 
-  if (loading) return <div className="p-20 text-center animate-pulse">Loading Classroom...</div>;
+  if (loading) return <div className="p-20 text-center animate-pulse text-slate-400">Loading Classroom...</div>;
   if (!course) return <div className="p-20 text-center text-red-500 font-bold">Course not found.</div>;
 
   const API_BASE = (import.meta as any).env?.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
@@ -190,38 +185,40 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                        (activeLesson.AssignmentSubmissions && activeLesson.AssignmentSubmissions.length > 0);
     const mySubmission = activeLesson.AssignmentSubmissions?.[0];
 
-    const contentBg = settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900';
+    const contentBg = 'bg-white border-slate-200 text-slate-900';
 
     switch (activeLesson.type) {
       case LessonType.VIDEO:
         return (
-          <div className={`rounded-3xl shadow-sm overflow-hidden border ${contentBg}`}>
-            <div className="aspect-video bg-slate-900">
+          <div className="space-y-6">
+            <div className="rounded-2xl shadow-xl overflow-hidden bg-black aspect-video border border-slate-900">
               <iframe className="w-full h-full" src={activeLesson.content_url} title={activeLesson.title} frameBorder="0" allowFullScreen></iframe>
             </div>
-            <div className="p-8 flex justify-between items-start">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-8">
               <div>
-                <h1 className={`text-3xl font-bold ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{activeLesson.title}</h1>
-                <p className={settings.ENABLE_DARK_MODE ? 'text-slate-400' : 'text-slate-600'}>Video Lesson</p>
+                <h1 className="text-3xl font-bold text-slate-900 mb-2">{activeLesson.title}</h1>
+                <p className="text-slate-500 font-medium">Video Lesson</p>
               </div>
               {!isCompleted ? (
-                <button onClick={markAsComplete} className="px-6 py-2 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-all">Mark as Finished</button>
+                <button onClick={markAsComplete} className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Mark as Finished</button>
               ) : (
-                <span className="px-6 py-2 bg-green-50 text-green-600 font-bold rounded-xl border border-green-200">✅ Completed</span>
+                <span className="px-6 py-2.5 bg-emerald-50 text-emerald-600 font-bold rounded-xl border border-emerald-100 flex items-center shadow-sm">
+                   <span className="mr-2">✓</span> Completed
+                </span>
               )}
             </div>
           </div>
         );
       case LessonType.PDF:
         return (
-          <div className={`rounded-3xl shadow-sm overflow-hidden border ${contentBg}`}>
-            <div className="aspect-video bg-slate-900 flex flex-col items-center justify-center text-white space-y-6">
-              <span className="text-7xl">📄</span>
-              <a href={`${API_BASE}${activeLesson.content_url}`} target="_blank" className="px-10 py-4 bg-white text-indigo-600 rounded-2xl font-black hover:bg-slate-100 transition-all">Download PDF</a>
+          <div className={`rounded-2xl shadow-sm overflow-hidden border ${contentBg}`}>
+            <div className="aspect-video bg-slate-50 flex flex-col items-center justify-center text-slate-400 space-y-6 border-b border-slate-100">
+              <span className="text-8xl opacity-20">📄</span>
+              <a href={`${API_BASE}${activeLesson.content_url}`} target="_blank" className="px-8 py-3 bg-white text-indigo-600 rounded-xl font-bold border border-slate-200 shadow-sm hover:shadow-md transition-all">Download PDF Resource</a>
             </div>
-            <div className="p-8 flex justify-between">
-              <h1 className="text-3xl font-bold">{activeLesson.title}</h1>
-              {!isCompleted && <button onClick={markAsComplete} className="px-6 py-2 bg-green-500 text-white font-bold rounded-xl">Mark as Finished</button>}
+            <div className="p-8 flex justify-between items-center">
+              <h1 className="text-2xl font-bold">{activeLesson.title}</h1>
+              {!isCompleted && <button onClick={markAsComplete} className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">Mark as Finished</button>}
             </div>
           </div>
         );
@@ -235,45 +232,47 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                 if (Array.isArray(targets) && targets.length > 0 && currentUserId && !targets.includes(currentUserId)) {
                     isAccessDenied = true;
                 }
-            } catch (e) {
-                console.error("Failed to parse assignment scope", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         return (
-          <div className={`rounded-3xl shadow-sm border p-10 ${contentBg}`}>
+          <div className={`rounded-2xl shadow-sm border p-10 ${contentBg}`}>
             <h1 className="text-3xl font-bold mb-4">{activeLesson.title}</h1>
-            <p className={`${settings.ENABLE_DARK_MODE ? 'text-slate-400' : 'text-slate-500'} mb-10`}>Submit your project or assignment files here for instructor review.</p>
+            <div className="prose prose-slate max-w-none mb-10 text-slate-600">
+               <p>{activeLesson.content_url || "Submit your project or assignment files here for instructor review."}</p>
+            </div>
 
             {userRole === UserRole.TEACHER ? (
               <div>
                 <button 
                   onClick={() => { setView('assignment-admin'); fetchSubmissions(activeLesson.id); }}
-                  className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
+                  className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                 >
                   View All Submissions
                 </button>
               </div>
             ) : isAccessDenied ? (
-              <div className="p-8 bg-slate-100 text-slate-500 font-medium rounded-xl border border-slate-200 text-center">
-                  🔒 This assignment is not assigned to you.
+              <div className="p-8 bg-slate-50 text-slate-500 font-medium rounded-xl border border-slate-200 text-center">
+                  🔒 This assignment is restricted to specific students.
               </div>
             ) : mySubmission ? (
-              <div className={`p-8 rounded-2xl border ${settings.ENABLE_DARK_MODE ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+              <div className="p-8 rounded-2xl border bg-slate-50 border-slate-200">
                 <div className="flex items-center justify-between mb-6">
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-400">Submission Status</span>
-                  <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase ${mySubmission.grade !== null ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Status</span>
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${mySubmission.grade !== null ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
                     {mySubmission.grade !== null ? `Graded: ${mySubmission.grade}/100` : 'Pending Review'}
                   </span>
                 </div>
-                <div className="mb-4">
-                  <p className="text-xs font-bold text-slate-400 mb-1">Submitted File</p>
-                  <a href={`${API_BASE}${mySubmission.file_path}`} target="_blank" className="text-indigo-600 font-bold hover:underline">Download my submission</a>
+                <div className="mb-6">
+                  <p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Submitted File</p>
+                  <a href={`${API_BASE}${mySubmission.file_path}`} target="_blank" className="text-indigo-600 font-bold hover:underline flex items-center">
+                    <span className="mr-2">📄</span> Download Submission
+                  </a>
                 </div>
                 {mySubmission.feedback && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 mb-1">Instructor Feedback</p>
-                    <p className={`${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'} italic`}>"{mySubmission.feedback}"</p>
+                  <div className="bg-white p-6 rounded-xl border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Instructor Feedback</p>
+                    <p className="text-slate-700 italic">"{mySubmission.feedback}"</p>
                   </div>
                 )}
               </div>
@@ -281,22 +280,22 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
               <div className="space-y-6">
                 {settings.ENABLE_STUDENT_UPLOADS ? (
                   <>
-                    <div className={`border-2 border-dashed rounded-2xl p-10 text-center ${settings.ENABLE_DARK_MODE ? 'border-slate-600' : 'border-slate-200'}`}>
+                    <div className="border-2 border-dashed rounded-2xl p-12 text-center border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group">
                       <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="assignment-upload" />
-                      <label htmlFor="assignment-upload" className="cursor-pointer">
-                        <span className="text-4xl block mb-4">📤</span>
-                        <span className={`font-bold block ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-600'}`}>{file ? file.name : 'Select file to upload'}</span>
-                        <span className="text-xs text-slate-400 mt-2 block">PDF, Word, or ZIP accepted</span>
+                      <label htmlFor="assignment-upload" className="cursor-pointer block">
+                        <span className="text-5xl block mb-6 opacity-30 group-hover:opacity-100 transition-opacity">📤</span>
+                        <span className="font-bold block text-lg text-slate-700 group-hover:text-indigo-600">{file ? file.name : 'Click to select file'}</span>
+                        <span className="text-sm text-slate-400 mt-2 block">Supported formats: PDF, DOCX, ZIP</span>
                       </label>
                     </div>
                     {file && (
-                      <button onClick={handleFileUpload} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-all">
+                      <button onClick={handleFileUpload} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all">
                         Submit Assignment
                       </button>
                     )}
                   </>
                 ) : (
-                  <div className="p-6 bg-orange-50 text-orange-700 rounded-xl border border-orange-100 font-bold text-center">
+                  <div className="p-6 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 font-bold text-center">
                      File uploads are currently disabled by the system administrator.
                   </div>
                 )}
@@ -309,38 +308,37 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   };
 
   const renderDiscussions = () => {
-    // ... (Discussion render code same as previous) ...
-    // Shortened for brevity, assumes identical content as previously generated
-    const cardBg = settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900';
-    const inputBg = settings.ENABLE_DARK_MODE ? 'bg-slate-700 text-white placeholder-slate-400' : 'bg-slate-50 text-slate-900 placeholder-slate-500';
+    const cardBg = 'bg-white border-slate-200 text-slate-900';
+    const inputBg = 'bg-slate-50 text-slate-900 placeholder-slate-500';
 
     if (activeTopic) {
       return (
         <div className="max-w-4xl mx-auto">
-          <button onClick={() => setActiveTopic(null)} className="mb-6 text-indigo-600 font-bold flex items-center">&larr; Back to Topics</button>
-          <div className={`rounded-3xl border shadow-sm p-8 mb-8 ${cardBg}`}>
-            <h2 className="text-2xl font-black mb-2">{activeTopic.title}</h2>
-            <div className="flex items-center text-xs text-slate-400 mb-6">
-               <span className="font-bold text-indigo-600 mr-2">{activeTopic.User?.name}</span>
-               <span>• {new Date(activeTopic.createdAt).toLocaleDateString()}</span>
+          <button onClick={() => setActiveTopic(null)} className="mb-6 text-indigo-600 font-bold flex items-center text-sm uppercase tracking-wide hover:underline">&larr; Back to Topics</button>
+          <div className={`rounded-2xl border shadow-sm p-8 mb-8 ${cardBg}`}>
+            <h2 className="text-2xl font-bold mb-3">{activeTopic.title}</h2>
+            <div className="flex items-center text-xs text-slate-500 mb-6 font-medium">
+               <span className="text-indigo-600 font-bold mr-2">{activeTopic.User?.name}</span>
+               <span className="mx-2">•</span>
+               <span>{new Date(activeTopic.createdAt).toLocaleDateString()}</span>
             </div>
-            <p className="leading-relaxed whitespace-pre-wrap">{activeTopic.content}</p>
+            <p className="leading-relaxed whitespace-pre-wrap text-slate-700">{activeTopic.content}</p>
           </div>
           <div className="space-y-6 mb-12">
-            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Replies ({activeTopic.DiscussionReplies?.length || 0})</h3>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-2">Replies ({activeTopic.DiscussionReplies?.length || 0})</h3>
             {activeTopic.DiscussionReplies?.map(reply => (
-              <div key={reply.id} className={`rounded-2xl p-6 border ${settings.ENABLE_DARK_MODE ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+              <div key={reply.id} className={`rounded-xl p-6 border bg-slate-50 border-slate-200`}>
                 <div className="flex items-center justify-between mb-3">
-                  <span className={`text-xs font-bold ${reply.User?.role === UserRole.TEACHER ? 'text-indigo-600' : (settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700')}`}>
+                  <span className={`text-sm font-bold ${reply.User?.role === UserRole.TEACHER ? 'text-indigo-600' : 'text-slate-700'}`}>
                     {reply.User?.name} {reply.User?.role === UserRole.TEACHER && ' (Instructor)'}
                   </span>
-                  <span className="text-[10px] text-slate-400">{new Date(reply.createdAt).toLocaleDateString()}</span>
+                  <span className="text-xs text-slate-400 font-medium">{new Date(reply.createdAt).toLocaleDateString()}</span>
                 </div>
-                <p className={`text-sm ${settings.ENABLE_DARK_MODE ? 'text-slate-200' : 'text-slate-600'}`}>{reply.content}</p>
+                <p className="text-sm text-slate-600 leading-relaxed">{reply.content}</p>
               </div>
             ))}
           </div>
-          <div className={`rounded-3xl border p-6 sticky bottom-6 shadow-xl ${cardBg}`}>
+          <div className={`rounded-2xl border p-6 sticky bottom-6 shadow-xl ${cardBg}`}>
              <textarea 
                className={`w-full rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-600 border-none ${inputBg}`}
                placeholder="Write a reply..."
@@ -349,7 +347,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                onChange={e => setNewReplyContent(e.target.value)}
              />
              <div className="mt-4 flex justify-end">
-               <button onClick={handleCreateReply} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700">Post Reply</button>
+               <button onClick={handleCreateReply} className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 shadow-sm">Post Reply</button>
              </div>
           </div>
         </div>
@@ -359,24 +357,24 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     return (
       <div className="max-w-4xl mx-auto space-y-8">
         {userRole === UserRole.TEACHER && (
-          <div className={`p-8 rounded-3xl border shadow-sm ${cardBg}`}>
-            <h3 className="text-xl font-black mb-6">Start New Discussion</h3>
+          <div className={`p-8 rounded-2xl border shadow-sm ${cardBg}`}>
+            <h3 className="text-lg font-bold mb-6">Start New Discussion</h3>
             <form onSubmit={handleCreateTopic} className="space-y-4">
               <input 
                 placeholder="Topic Title"
-                className={`w-full px-5 py-3 border-none rounded-xl focus:ring-2 focus:ring-indigo-600 ${inputBg}`}
+                className={`w-full px-5 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600 outline-none ${inputBg}`}
                 value={newTopicForm.title}
                 onChange={e => setNewTopicForm({...newTopicForm, title: e.target.value})}
                 required
               />
               <textarea 
                 placeholder="Initial post content..."
-                className={`w-full px-5 py-3 border-none rounded-xl focus:ring-2 focus:ring-indigo-600 h-24 ${inputBg}`}
+                className={`w-full px-5 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600 outline-none h-24 resize-none ${inputBg}`}
                 value={newTopicForm.content}
                 onChange={e => setNewTopicForm({...newTopicForm, content: e.target.value})}
                 required
               />
-              <button type="submit" className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">
+              <button type="submit" className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-sm">
                 Create Topic
               </button>
             </form>
@@ -384,17 +382,17 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
         )}
         <div className="space-y-4">
            {topics.length === 0 ? (
-             <div className={`text-center py-20 rounded-3xl border-2 border-dashed ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-100/50 border-slate-300 text-slate-500'}`}>
-               <p className="font-medium">No discussion topics created yet.</p>
+             <div className="text-center py-16 rounded-2xl border border-slate-200 bg-slate-50">
+               <p className="font-medium text-slate-500">No discussion topics created yet.</p>
              </div>
            ) : (
              topics.map(topic => (
-               <button key={topic.id} onClick={() => fetchThread(topic.id)} className={`w-full p-6 rounded-2xl border shadow-sm hover:shadow-md transition-all text-left group ${cardBg}`}>
+               <button key={topic.id} onClick={() => fetchThread(topic.id)} className={`w-full p-6 rounded-2xl border shadow-sm hover:shadow-md transition-all text-left group bg-white border-slate-200 hover:border-indigo-200`}>
                  <div className="flex justify-between items-start mb-2">
-                   <h4 className="text-lg font-bold group-hover:text-indigo-600 transition-colors">{topic.title}</h4>
-                   <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md font-bold">{topic.reply_count} Replies</span>
+                   <h4 className="text-lg font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{topic.title}</h4>
+                   <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-bold">{topic.reply_count} Replies</span>
                  </div>
-                 <p className="text-slate-500 text-sm line-clamp-2 mb-4">{topic.content}</p>
+                 <p className="text-slate-500 text-sm line-clamp-2 mb-4 leading-relaxed">{topic.content}</p>
                  <div className="text-xs text-slate-400 font-medium">
                    Started by {topic.User?.name} • {new Date(topic.createdAt).toLocaleDateString()}
                  </div>
@@ -407,36 +405,38 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   };
 
   return (
-    <div className={`flex flex-col lg:flex-row min-h-[calc(100vh-80px)] ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 text-slate-100' : 'bg-slate-50'}`}>
-      {/* Sidebar */}
-      <div className={`w-full lg:w-96 border-r flex flex-col h-auto lg:h-[calc(100vh-80px)] sticky top-20 ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-        <div className={`p-8 border-b ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-100'}`}>
-          <h2 className={`font-black text-xl leading-tight mb-2 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h2>
+    <div className="flex flex-col lg:flex-row min-h-[calc(100vh-80px)] bg-slate-50">
+      {/* Clean Light Sidebar */}
+      <div className="w-full lg:w-80 border-r border-slate-200 flex flex-col h-auto lg:h-[calc(100vh-80px)] sticky top-20 bg-white shadow-sm z-20">
+        <div className="p-6 border-b border-slate-100">
+          <h2 className="font-bold text-lg leading-tight mb-4 text-slate-900 line-clamp-2">{course.title}</h2>
           
           {/* INSTRUCTOR TOOLS */}
           {isInstructor && (
-            <div className={`mb-6 p-4 rounded-xl border ${settings.ENABLE_DARK_MODE ? 'bg-indigo-900/20 border-indigo-900/50' : 'bg-indigo-50 border-indigo-100'}`}>
-                <p className={`text-xs font-black uppercase tracking-widest mb-3 ${settings.ENABLE_DARK_MODE ? 'text-indigo-400' : 'text-indigo-900'}`}>Instructor Tools</p>
-                <button onClick={() => window.location.hash = `#/teacher/courses/${courseId}`} className={`block w-full text-left text-sm font-bold hover:underline mb-2 ${settings.ENABLE_DARK_MODE ? 'text-indigo-300' : 'text-indigo-700'}`}>✏️ Edit Course</button>
-                <a href={`#/gradebook/${courseId}`} className={`block w-full text-left text-sm font-bold hover:underline ${settings.ENABLE_DARK_MODE ? 'text-indigo-300' : 'text-indigo-700'}`}>📊 Gradebook</a>
+            <div className="mb-6 p-4 rounded-xl border border-indigo-100 bg-indigo-50/50">
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-3 text-indigo-400">Instructor Tools</p>
+                <button onClick={() => window.location.hash = `#/teacher/courses/${courseId}`} className="block w-full text-left text-sm font-bold hover:text-indigo-700 mb-2 text-indigo-600 transition-colors">✏️ Edit Course</button>
+                <a href={`#/gradebook/${courseId}`} className="block w-full text-left text-sm font-bold hover:text-indigo-700 text-indigo-600 transition-colors">📊 Gradebook</a>
             </div>
           )}
 
-          <div className="flex flex-col space-y-3 mt-4">
-            <button onClick={() => setView('content')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50/10'}`}>Curriculum</button>
+          <div className="flex flex-col space-y-1">
+            <button onClick={() => setView('content')} className={`text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all text-left ${view === 'content' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Curriculum</button>
             {settings.SHOW_COURSE_ANNOUNCEMENTS && (
-              <button onClick={() => { setView('announcements'); setActiveLesson(null); }} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'announcements' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50/10'}`}>Announcements</button>
+              <button onClick={() => { setView('announcements'); setActiveLesson(null); }} className={`text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all text-left ${view === 'announcements' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Announcements</button>
             )}
-            <button onClick={() => { setView('discussions'); fetchTopics(); setActiveLesson(null); }} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'discussions' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50/10'}`}>Discussions</button>
+            <button onClick={() => { setView('discussions'); fetchTopics(); setActiveLesson(null); }} className={`text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all text-left ${view === 'discussions' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Discussions</button>
           </div>
         </div>
 
-        <div className="flex-grow overflow-y-auto">
-          {view === 'content' && course.Lessons?.map((lesson: any) => (
-            <button key={lesson.id} onClick={() => { setActiveLesson(lesson); setView('content'); }} className={`w-full text-left px-8 py-5 flex items-start space-x-4 transition-all ${activeLesson?.id === lesson.id ? 'bg-indigo-50/50 border-r-4 border-indigo-600' : 'hover:bg-slate-50/10 border-r-4 border-transparent'}`}>
-              <div className="mt-1 flex-shrink-0">{(lesson.Submissions?.length > 0 || lesson.AssignmentSubmissions?.length > 0) ? '✅' : '▶️'}</div>
+        <div className="flex-grow overflow-y-auto py-2">
+          {view === 'content' && course.Lessons?.map((lesson: any, idx) => (
+            <button key={lesson.id} onClick={() => { setActiveLesson(lesson); setView('content'); }} className={`w-full text-left px-6 py-4 flex items-start space-x-4 transition-all border-l-4 ${activeLesson?.id === lesson.id ? 'bg-slate-50 border-indigo-600' : 'hover:bg-slate-50 border-transparent'}`}>
+              <div className="mt-0.5 flex-shrink-0 text-slate-400 text-xs font-bold w-5 pt-1 text-center">
+                 {(lesson.Submissions?.length > 0 || lesson.AssignmentSubmissions?.length > 0) ? <span className="text-emerald-500 text-lg">✓</span> : idx + 1}
+              </div>
               <div className="flex-grow">
-                <p className={`text-sm font-black ${activeLesson?.id === lesson.id ? 'text-indigo-600' : 'text-slate-500'}`}>{lesson.title}</p>
+                <p className={`text-sm font-bold leading-tight mb-1 ${activeLesson?.id === lesson.id ? 'text-indigo-600' : 'text-slate-700'}`}>{lesson.title}</p>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{lesson.type}</p>
               </div>
             </button>
@@ -450,61 +450,59 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       </div>
 
       {/* Main View */}
-      <div className="flex-grow p-6 lg:p-12 overflow-y-auto relative">
-        <div className="max-w-6xl mx-auto">
+      <div className="flex-grow p-6 lg:p-12 overflow-y-auto relative bg-slate-50">
+        <div className="max-w-5xl mx-auto bg-white min-h-[80vh] rounded-3xl shadow-sm border border-slate-200 p-8 lg:p-12">
           {view === 'announcements' ? (
             <AnnouncementsTab courseId={course.id} userRole={userRole} />
           ) : view === 'discussions' ? (
             renderDiscussions()
           ) : view === 'assignment-admin' ? (
-            // Assignment Admin Render Logic
-            <div className={`rounded-3xl border shadow-sm overflow-hidden ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-              <div className={`p-8 border-b flex justify-between items-center ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-50'}`}>
-                <h2 className={`text-2xl font-black ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Assignment Submissions</h2>
-                <button onClick={() => setView('content')} className="text-indigo-600 font-bold text-sm">Back to Class</button>
+            // Assignment Admin Render Logic (Updated Table Style)
+            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h2 className="text-lg font-bold text-slate-900 uppercase tracking-wide">Assignment Submissions</h2>
+                <button onClick={() => setView('content')} className="text-indigo-600 font-bold text-sm hover:underline">Return to Lesson</button>
               </div>
               <table className="w-full text-left">
-                <thead>
-                  <tr className={`text-[10px] font-black text-slate-400 uppercase tracking-widest border-b ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-50'}`}>
-                    <th className="px-6 py-4">Student</th>
-                    <th className="px-6 py-4">Submitted File</th>
-                    <th className="px-6 py-4">Grade</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Student</th>
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">File</th>
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Grade</th>
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y ${settings.ENABLE_DARK_MODE ? 'divide-slate-700' : 'divide-slate-50'}`}>
+                <tbody className="divide-y divide-slate-50">
                   {submissions.map(sub => (
-                    <tr key={sub.id} className={`transition-colors ${settings.ENABLE_DARK_MODE ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}>
+                    <tr key={sub.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-900">{sub.User?.name}</td>
                       <td className="px-6 py-4">
-                        <p className={`text-sm font-bold ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{sub.User?.name}</p>
+                        <a href={`${API_BASE}${sub.file_path}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wide">Download</a>
                       </td>
-                      <td className="px-6 py-4">
-                        <a href={`${API_BASE}${sub.file_path}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:underline">Download</a>
-                      </td>
-                      <td className={`px-6 py-4 font-black ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{sub.grade !== null ? `${sub.grade}%` : '-'}</td>
+                      <td className="px-6 py-4 font-bold text-slate-700">{sub.grade !== null ? `${sub.grade}%` : '-'}</td>
                       <td className="px-6 py-4 text-right">
-                        <button onClick={() => setGrading({ id: sub.id, grade: sub.grade?.toString() || '', feedback: sub.feedback || '' })} className="px-4 py-1.5 bg-slate-100 text-slate-600 font-bold text-[10px] rounded-lg">Grade</button>
+                        <button onClick={() => setGrading({ id: sub.id, grade: sub.grade?.toString() || '', feedback: sub.feedback || '' })} className="px-4 py-1.5 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg hover:bg-slate-50 transition-colors">Grade</button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {grading && (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className={`rounded-3xl p-8 max-w-md w-full shadow-2xl ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 text-white' : 'bg-white'}`}>
-                    <h3 className="text-xl font-black mb-6">Grade Submission</h3>
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="rounded-2xl p-8 max-w-md w-full shadow-2xl bg-white">
+                    <h3 className="text-xl font-bold mb-6 text-slate-900">Grade Submission</h3>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Score</label>
-                        <input type="number" value={grading.grade} onChange={e => setGrading({...grading, grade: e.target.value})} className="w-full p-3 rounded-xl bg-slate-50 text-slate-900" />
+                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Score (0-100)</label>
+                        <input type="number" value={grading.grade} onChange={e => setGrading({...grading, grade: e.target.value})} className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-600 outline-none" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Feedback</label>
-                        <textarea value={grading.feedback} onChange={e => setGrading({...grading, feedback: e.target.value})} className="w-full p-3 rounded-xl h-24 bg-slate-50 text-slate-900" />
+                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Feedback</label>
+                        <textarea value={grading.feedback} onChange={e => setGrading({...grading, feedback: e.target.value})} className="w-full p-3 rounded-xl h-32 bg-slate-50 border border-slate-200 text-slate-900 resize-none focus:ring-2 focus:ring-indigo-600 outline-none" />
                       </div>
                       <div className="flex space-x-3 mt-6">
-                        <button onClick={() => setGrading(null)} className="flex-grow py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Cancel</button>
-                        <button onClick={handleGradeSubmit} className="flex-grow py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-100">Save Grade</button>
+                        <button onClick={() => setGrading(null)} className="flex-grow py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50">Cancel</button>
+                        <button onClick={handleGradeSubmit} className="flex-grow py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700">Save</button>
                       </div>
                     </div>
                   </div>
@@ -514,9 +512,9 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           ) : activeLesson ? (
             renderActiveContent()
           ) : (
-            <div className={`text-center py-20 rounded-3xl border border-dashed ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-               <div className="text-6xl mb-6">🎓</div>
-               <h2 className={`text-3xl font-black mb-4 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h2>
+            <div className="text-center py-24">
+               <div className="text-6xl mb-6 opacity-20">🎓</div>
+               <h2 className="text-3xl font-black mb-4 text-slate-900">{course.title}</h2>
                
                {isInstructor ? (
                  <p className="text-slate-500 max-w-md mx-auto mb-8">Welcome, Instructor. Use the sidebar to manage content or preview the course.</p>
@@ -525,7 +523,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                ) : (
                  <>
                    <p className="text-slate-500 max-w-md mx-auto mb-8">You are not enrolled in this course. Join now to access the full curriculum and assignments.</p>
-                   <button onClick={handleEnroll} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
+                   <button onClick={handleEnroll} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
                      Enroll Now
                    </button>
                  </>
