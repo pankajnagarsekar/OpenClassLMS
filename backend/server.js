@@ -229,45 +229,62 @@ app.post('/api/auth/verify', async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// MODIFIED: Enrollment endpoint supporting manual assignment via email
+// MODIFIED: Enrollment endpoint supporting bulk assignment via array of emails
 app.post('/api/courses/:id/enroll', authenticateToken, async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) return res.status(404).json({ message: 'Course not found' });
 
-    let userIdToEnroll = req.user.id;
+    // Permission Check
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+       return res.status(403).json({ message: 'Only instructors can manually enroll students.' });
+    }
+    // Teacher ownership check
+    if (req.user.role === 'teacher' && course.teacher_id !== req.user.id) {
+       return res.status(403).json({ message: 'You can only enroll students in your own courses.' });
+    }
 
-    // Check if Teacher/Admin is trying to enroll someone else by email
-    if (req.body.email) {
-      if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
-         return res.status(403).json({ message: 'Only instructors can manually enroll students.' });
-      }
-      
-      // Teacher ownership check
-      if (req.user.role === 'teacher' && course.teacher_id !== req.user.id) {
-         return res.status(403).json({ message: 'You can only enroll students in your own courses.' });
-      }
-
-      const targetUser = await User.findOne({ where: { email: req.body.email } });
-      if (!targetUser) return res.status(404).json({ message: 'Student email not found.' });
-      userIdToEnroll = targetUser.id;
+    // Determine targets
+    let emailsToEnroll = [];
+    if (req.body.emails && Array.isArray(req.body.emails)) {
+        emailsToEnroll = req.body.emails;
+    } else if (req.body.email) {
+        emailsToEnroll = [req.body.email];
+    } else {
+        // Enrolling self (if not teacher/admin flow, but this route is protected now for that)
+        return res.status(400).json({ message: 'No email provided.' });
     }
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + course.access_days);
 
-    const [enrollment, created] = await Enrollment.findOrCreate({
-      where: { user_id: userIdToEnroll, course_id: course.id },
-      defaults: { expires_at: expiresAt, is_active: true }
-    });
+    let successCount = 0;
+    let notFoundCount = 0;
 
-    if (!created) {
-      enrollment.is_active = true;
-      enrollment.expires_at = expiresAt;
-      await enrollment.save();
+    for (const email of emailsToEnroll) {
+        const targetUser = await User.findOne({ where: { email } });
+        if (!targetUser) {
+            notFoundCount++;
+            continue;
+        }
+
+        const [enrollment, created] = await Enrollment.findOrCreate({
+            where: { user_id: targetUser.id, course_id: course.id },
+            defaults: { expires_at: expiresAt, is_active: true }
+        });
+
+        if (!created) {
+            enrollment.is_active = true;
+            enrollment.expires_at = expiresAt;
+            await enrollment.save();
+        }
+        successCount++;
     }
     
-    res.json({ message: 'Enrollment successful', enrollment });
+    res.json({ 
+        message: `Processed enrollment. Success: ${successCount}, Not Found: ${notFoundCount}`,
+        successCount 
+    });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -386,7 +403,7 @@ app.get('/api/teacher/my-courses', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// NEW: Get all students enrolled in Teacher's courses
+// Get all students enrolled in Teacher's courses
 app.get('/api/teacher/students', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied.' });
@@ -420,9 +437,23 @@ app.get('/api/teacher/students', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// NEW: Get Candidate Students (All students in system, excluding teachers/admins)
+app.get('/api/teacher/candidates', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access denied.' });
+        }
+        // Fetch only students
+        const candidates = await User.findAll({
+            where: { role: 'student' },
+            attributes: ['id', 'name', 'email']
+        });
+        res.json(candidates);
+    } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
-    // UPDATED: Allow Admin to specify teacher_id, otherwise default to current user
     if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied: Instructors only' });
     }
@@ -453,18 +484,16 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// NEW: Delete Course Endpoint
+// Delete Course Endpoint
 app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) return res.status(404).json({ message: 'Course not found' });
 
-    // Authorization Check
     if (course.teacher_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Unauthorized to delete this course.' });
     }
 
-    // Safety Check: Active Students
     const studentCount = await Enrollment.count({ where: { course_id: course.id } });
     if (studentCount > 0) {
       return res.status(400).json({ message: `Cannot delete course. There are ${studentCount} active enrollments.` });
@@ -475,7 +504,7 @@ app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// NEW Endpoint to fetch students for a specific course (for scoping)
+// Fetch students for a specific course
 app.get('/api/courses/:id/students', authenticateToken, async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id, {
@@ -487,7 +516,6 @@ app.get('/api/courses/:id/students', authenticateToken, async (req, res) => {
 
     if (!course) return res.status(404).json({ message: 'Course not found' });
     
-    // Authorization Check
     if (req.user.role !== 'admin' && course.teacher_id !== req.user.id) {
        return res.status(403).json({ message: 'Unauthorized' });
     }
@@ -497,7 +525,7 @@ app.get('/api/courses/:id/students', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// NEW: Secure Announcements Endpoint
+// Secure Announcements Endpoint
 app.get('/api/courses/:id/announcements', authenticateToken, checkEnrollmentStatus, async (req, res) => {
   try {
     const announcements = await Announcement.findAll({
@@ -544,14 +572,13 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
       target_students: target_students ? target_students : null
     });
 
-    // Handle Quiz Creation
     if (type === 'quiz' && req.body.questions) {
       const questions = JSON.parse(req.body.questions);
       for (const q of questions) {
         await Question.create({
           lesson_id: lesson.id,
           question_text: q.text,
-          options: q.options, // Sequelize setter handles JSON stringification
+          options: q.options,
           correct_answer: q.correctAnswer
         });
       }
@@ -561,7 +588,6 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// NEW: Quiz Retrieval
 app.get('/api/lessons/:id/quiz', authenticateToken, async (req, res) => {
   try {
     const questions = await Question.findAll({ where: { lesson_id: req.params.id } });
@@ -589,7 +615,6 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    // Manual Enrollment Check
     const enrollment = await Enrollment.findOne({
       where: { user_id: userId, course_id: courseId, is_active: true }
     });
