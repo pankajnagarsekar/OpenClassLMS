@@ -245,7 +245,7 @@ app.post('/api/auth/verify', async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ... (Enrollment, Admin Stats, User Management routes) ...
+// ... (Enrollment logic) ...
 
 app.post('/api/courses/:id/enroll', authenticateToken, async (req, res) => {
   try {
@@ -296,74 +296,81 @@ app.post('/api/courses/:id/enroll', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ... (Admin Users routes) ...
+// ENROLLMENT LIFECYCLE MANAGEMENT
+
+app.put('/api/enrollments/:id/note', authenticateToken, async (req, res) => {
+  try {
+    const enrollment = await Enrollment.findByPk(req.params.id, { include: [Course] });
+    if (!enrollment) return res.status(404).json({ message: 'Enrollment not found' });
+    if (req.user.role !== 'admin' && enrollment.Course.teacher_id !== req.user.id) {
+        return res.status(403).json({ message: 'Unauthorized' });
+    }
+    enrollment.teacher_notes = req.body.note;
+    await enrollment.save();
+    res.json({ message: 'Note updated' });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/enrollments/:id/toggle', authenticateToken, async (req, res) => {
+  try {
+    const enrollment = await Enrollment.findByPk(req.params.id, { include: [Course] });
+    if (!enrollment) return res.status(404).json({ message: 'Enrollment not found' });
+    if (req.user.role !== 'admin' && enrollment.Course.teacher_id !== req.user.id) {
+        return res.status(403).json({ message: 'Unauthorized' });
+    }
+    enrollment.is_active = !enrollment.is_active;
+    await enrollment.save();
+    res.json({ message: 'Status toggled', is_active: enrollment.is_active });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.delete('/api/enrollments/:id', authenticateToken, async (req, res) => {
+  try {
+    const enrollment = await Enrollment.findByPk(req.params.id, { include: [Course] });
+    if (!enrollment) return res.status(404).json({ message: 'Enrollment not found' });
+    if (req.user.role !== 'admin' && enrollment.Course.teacher_id !== req.user.id) {
+        return res.status(403).json({ message: 'Unauthorized' });
+    }
+    await enrollment.destroy();
+    res.json({ message: 'Student removed from course' });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// ... (Rest of existing endpoints) ...
+
 app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {
   try {
     const users = await User.findAll({ attributes: { exclude: ['password_hash'] }, include: [{ model: Course, as: 'TeachingCourses', include: [{ model: Enrollment }] }, { model: Enrollment, include: [{ model: Course, include: [Lesson] }] }, { model: Submission }, { model: AssignmentSubmission }] });
-    // Simplified enriched logic for brevity, assuming Phase 1 code exists
     res.json(users);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- TEACHER PRODUCTIVITY & CALENDAR ---
-
 app.get('/api/teacher/calendar', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher' && req.user.role !== 'admin') return res.status(403).json({ message: 'Access denied' });
-
-    // 1. Fetch Course Deadlines (Assignments/Quizzes with due_date)
-    // Find courses taught by user
     const lessons = await Lesson.findAll({
-      where: {
-        due_date: { [Op.ne]: null },
-        type: { [Op.in]: ['quiz', 'assignment'] }
-      },
-      include: [{
-        model: Course,
-        where: { teacher_id: req.user.id },
-        attributes: ['title']
-      }]
+      where: { due_date: { [Op.ne]: null }, type: { [Op.in]: ['quiz', 'assignment'] } },
+      include: [{ model: Course, where: { teacher_id: req.user.id }, attributes: ['title'] }]
     });
-
-    const courseEvents = lessons.map(l => ({
-      id: `lesson-${l.id}`,
-      title: `${l.Course.title}: ${l.title}`,
-      date: l.due_date,
-      type: l.type === 'quiz' ? 'quiz' : 'assignment',
-      link: `#/course/${l.course_id}`
-    }));
-
-    // 2. Fetch Personal Tasks
-    const tasks = await CalendarTask.findAll({
-      where: { user_id: req.user.id }
-    });
-
-    const taskEvents = tasks.map(t => ({
-      id: `task-${t.id}`,
-      title: t.title,
-      date: t.date,
-      type: 'personal',
-      description: t.description
-    }));
-
+    const courseEvents = lessons.map(l => ({ id: `lesson-${l.id}`, title: `${l.Course.title}: ${l.title}`, date: l.due_date, type: l.type === 'quiz' ? 'quiz' : 'assignment', link: `#/course/${l.course_id}` }));
+    const tasks = await CalendarTask.findAll({ where: { user_id: req.user.id } });
+    const taskEvents = tasks.map(t => ({ id: `task-${t.id}`, title: t.title, date: t.date, type: 'personal', description: t.description }));
     res.json([...courseEvents, ...taskEvents]);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// ... (Calendar/Task/Discussion routes remain same) ...
+
 app.post('/api/teacher/calendar/tasks', authenticateToken, async (req, res) => {
   try {
     const { title, date, description } = req.body;
-    const task = await CalendarTask.create({
-      user_id: req.user.id,
-      title, date, description
-    });
+    const task = await CalendarTask.create({ user_id: req.user.id, title, date, description });
     res.status(201).json(task);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.delete('/api/teacher/calendar/tasks/:id', authenticateToken, async (req, res) => {
   try {
-    // ID comes in as "task-123", we need to strip prefix if frontend sends it, or just handle ID
     const rawId = req.params.id.replace('task-', '');
     const task = await CalendarTask.findOne({ where: { id: rawId, user_id: req.user.id } });
     if (!task) return res.status(404).json({ message: 'Task not found' });
@@ -372,55 +379,25 @@ app.delete('/api/teacher/calendar/tasks/:id', authenticateToken, async (req, res
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- GLOBAL DISCUSSIONS ---
-
 app.get('/api/teacher/discussions/all', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher' && req.user.role !== 'admin') return res.status(403).json({ message: 'Access denied' });
-
     const search = req.query.search || '';
-    
-    // Find courses taught by teacher
-    const myCourses = await Course.findAll({
-      where: { teacher_id: req.user.id },
-      attributes: ['id']
-    });
+    const myCourses = await Course.findAll({ where: { teacher_id: req.user.id }, attributes: ['id'] });
     const courseIds = myCourses.map(c => c.id);
-
     const topics = await DiscussionTopic.findAll({
-      where: {
-        course_id: { [Op.in]: courseIds },
-        title: { [Op.like]: `%${search}%` }
-      },
-      include: [
-        { model: User, attributes: ['name'] },
-        { model: Course, attributes: ['title'] },
-        { model: DiscussionReply }
-      ],
+      where: { course_id: { [Op.in]: courseIds }, title: { [Op.like]: `%${search}%` } },
+      include: [{ model: User, attributes: ['name'] }, { model: Course, attributes: ['title'] }, { model: DiscussionReply }],
       order: [['createdAt', 'DESC']]
     });
-
-    const data = topics.map(t => ({
-      id: t.id,
-      title: t.title,
-      course_title: t.Course.title,
-      author: t.User.name,
-      reply_count: t.DiscussionReplies.length,
-      createdAt: t.createdAt
-    }));
-
+    const data = topics.map(t => ({ id: t.id, title: t.title, course_title: t.Course.title, author: t.User.name, reply_count: t.DiscussionReplies.length, createdAt: t.createdAt }));
     res.json(data);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- NOTIFICATIONS ---
-
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
-    const notifications = await Notification.findAll({
-      where: { user_id: req.user.id, is_read: false },
-      order: [['createdAt', 'DESC']]
-    });
+    const notifications = await Notification.findAll({ where: { user_id: req.user.id, is_read: false }, order: [['createdAt', 'DESC']] });
     res.json(notifications);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -428,180 +405,126 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
 app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
   try {
     const notif = await Notification.findOne({ where: { id: req.params.id, user_id: req.user.id } });
-    if (notif) {
-      notif.is_read = true;
-      await notif.save();
-    }
+    if (notif) { notif.is_read = true; await notif.save(); }
     res.json({ message: 'Marked read' });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- SUBMISSION ENDPOINTS (UPDATED FOR NOTIFICATIONS) ---
-
-// General Submission (Quizzes) - Trigger Notification
 app.post('/api/lessons/:id/submit', authenticateToken, upload.single('assignmentFile'), async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.id, { include: [Course] });
     if (!lesson) return res.status(404).json({ message: 'Lesson not found' });
-
-    // Handle Quiz Submission
     if (lesson.type === 'quiz') {
       const { answers } = req.body;
       const questions = await Question.findAll({ where: { lesson_id: lesson.id } });
       let correctCount = 0;
-      questions.forEach(q => {
-        if (answers[q.id] === q.correct_answer) correctCount++;
-      });
+      questions.forEach(q => { if (answers[q.id] === q.correct_answer) correctCount++; });
       const score = Math.round((correctCount / questions.length) * 100);
-      
-      await Submission.create({
-        user_id: req.user.id,
-        lesson_id: lesson.id,
-        score
-      });
-
-      // Notification to Teacher
-      await Notification.create({
-        user_id: lesson.Course.teacher_id,
-        message: `${req.user.name} completed quiz: ${lesson.title}`,
-        type: 'submission',
-        link: `#/gradebook/${lesson.course_id}`
-      });
-
+      await Submission.create({ user_id: req.user.id, lesson_id: lesson.id, score });
+      await Notification.create({ user_id: lesson.Course.teacher_id, message: `${req.user.name} completed quiz: ${lesson.title}`, type: 'submission', link: `#/gradebook/${lesson.course_id}` });
       return res.json({ score, totalQuestions: questions.length, correctCount });
     } 
-    
-    // Handle Assignment Submission
     if (lesson.type === 'assignment') {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-      
       const existing = await AssignmentSubmission.findOne({ where: { user_id: req.user.id, lesson_id: lesson.id } });
-      if (existing) {
-        existing.file_path = `/uploads/${req.file.filename}`;
-        existing.submitted_at = new Date();
-        await existing.save();
-      } else {
-        await AssignmentSubmission.create({
-          user_id: req.user.id,
-          lesson_id: lesson.id,
-          file_path: `/uploads/${req.file.filename}`
-        });
-      }
-
-      // Notification to Teacher
-      await Notification.create({
-        user_id: lesson.Course.teacher_id,
-        message: `${req.user.name} submitted assignment: ${lesson.title}`,
-        type: 'submission',
-        link: `#/gradebook/${lesson.course_id}`
-      });
-
+      if (existing) { existing.file_path = `/uploads/${req.file.filename}`; existing.submitted_at = new Date(); await existing.save(); }
+      else { await AssignmentSubmission.create({ user_id: req.user.id, lesson_id: lesson.id, file_path: `/uploads/${req.file.filename}` }); }
+      await Notification.create({ user_id: lesson.Course.teacher_id, message: `${req.user.name} submitted assignment: ${lesson.title}`, type: 'submission', link: `#/gradebook/${lesson.course_id}` });
       return res.json({ message: 'Assignment submitted successfully' });
     }
-
-    // Handle 'complete' for video/text/pdf
     await Submission.create({ user_id: req.user.id, lesson_id: lesson.id, score: 100 });
     res.json({ message: 'Marked complete' });
-
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// Complete Endpoint (Simple Mark as Done)
 app.post('/api/lessons/:id/complete', authenticateToken, async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.id);
     if (!lesson) return res.status(404).json({ message: 'Lesson not found' });
-    
     const exists = await Submission.findOne({ where: { user_id: req.user.id, lesson_id: lesson.id } });
-    if (!exists) {
-      await Submission.create({ user_id: req.user.id, lesson_id: lesson.id, score: 100 });
-    }
+    if (!exists) { await Submission.create({ user_id: req.user.id, lesson_id: lesson.id, score: 100 }); }
     res.json({ message: 'Completed' });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// Updated Reply Endpoint - Trigger Notification
 app.post('/api/discussions/:id/replies', authenticateToken, async (req, res) => {
   try {
     const topic = await DiscussionTopic.findByPk(req.params.id, { include: [Course] });
     if (!topic) return res.status(404).json({ message: 'Topic not found' });
-
-    // Check enrollment
     if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
        const enrollment = await Enrollment.findOne({ where: { user_id: req.user.id, course_id: topic.Course.id, is_active: true } });
        if (!enrollment) return res.status(403).json({ message: 'You are not enrolled in this course.' });
     }
-
     const { content } = req.body;
-    const reply = await DiscussionReply.create({
-      topic_id: topic.id,
-      user_id: req.user.id,
-      content
-    });
-
-    // Notify Topic Author (if not self)
+    const reply = await DiscussionReply.create({ topic_id: topic.id, user_id: req.user.id, content });
     if (topic.user_id !== req.user.id) {
-      await Notification.create({
-        user_id: topic.user_id,
-        message: `${req.user.name} replied to your topic: ${topic.title}`,
-        type: 'reply',
-        link: `#/course/${topic.course_id}` // Ideally deep link to tab, but course link works
-      });
+      await Notification.create({ user_id: topic.user_id, message: `${req.user.name} replied to your topic: ${topic.title}`, type: 'reply', link: `#/course/${topic.course_id}` });
     }
-
-    const replyWithUser = await DiscussionReply.findByPk(reply.id, {
-      include: [{ model: User, attributes: ['name', 'role'] }]
-    });
-
+    const replyWithUser = await DiscussionReply.findByPk(reply.id, { include: [{ model: User, attributes: ['name', 'role'] }] });
     res.status(201).json(replyWithUser);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ... (Other endpoints: Courses, Gradebook, Quiz Upload, etc. remain the same) ...
+// MODIFIED: Include enrollment details in gradebook
+app.get('/api/courses/:id/gradebook', authenticateToken, async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id, { include: [Lesson] });
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin' && course.teacher_id !== req.user.id) return res.status(403).json({ message: 'Unauthorized' });
+    const enrollments = await Enrollment.findAll({ where: { course_id: course.id }, include: [User] });
+    const lessons = course.Lessons;
+    const rows = await Promise.all(enrollments.map(async (en) => {
+      const student = en.User;
+      if (!student) return null;
+      const grades = {};
+      for (const lesson of lessons) {
+        if (lesson.type === 'quiz') {
+          const sub = await Submission.findOne({ where: { user_id: student.id, lesson_id: lesson.id }, order: [['score', 'DESC']] });
+          if (sub) grades[lesson.id] = sub.score;
+        } else if (lesson.type === 'assignment') {
+          const sub = await AssignmentSubmission.findOne({ where: { user_id: student.id, lesson_id: lesson.id } });
+          if (sub && sub.grade !== null) grades[lesson.id] = sub.grade;
+        }
+      }
+      return { 
+        student_name: student.name, 
+        student_email: student.email, 
+        enrollment_id: en.id,
+        is_active: en.is_active,
+        teacher_notes: en.teacher_notes,
+        grades 
+      };
+    }));
+    res.json({
+      columns: lessons.filter(l => l.type === 'quiz' || l.type === 'assignment').map(l => ({ id: l.id, title: l.title })),
+      rows: rows.filter(r => r !== null)
+    });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
 
-// Updated Lesson Creation to accept due_date
+// ... (Course CRUD, etc.) ...
+
 app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) return res.status(404).json({ message: 'Course not found' });
     if (course.teacher_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ message: 'Unauthorized' });
-
     const { title, type, content, position, target_students, due_date } = req.body;
     let contentUrl = content;
     if (req.file) contentUrl = `/uploads/${req.file.filename}`;
     if (type === 'video') contentUrl = req.body.content; 
-
-    const lesson = await Lesson.create({
-      course_id: course.id,
-      title,
-      type,
-      content_url: contentUrl,
-      position: position || 0,
-      target_students: target_students ? target_students : null,
-      due_date: due_date ? due_date : null
-    });
-
+    const lesson = await Lesson.create({ course_id: course.id, title, type, content_url: contentUrl, position: position || 0, target_students: target_students ? target_students : null, due_date: due_date ? due_date : null });
     if (type === 'quiz' && req.body.questions) {
       const questions = JSON.parse(req.body.questions);
       for (const q of questions) {
-        await Question.create({
-          lesson_id: lesson.id,
-          question_text: q.text,
-          options: q.options,
-          correct_answer: q.correctAnswer
-        });
+        await Question.create({ lesson_id: lesson.id, question_text: q.text, options: q.options, correct_answer: q.correctAnswer });
       }
     }
-
     res.status(201).json(lesson);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ... (Rest of existing routes) ...
-
-const seedSettings = async () => {
-  // ... existing seed ...
-};
+const seedSettings = async () => {};
 
 sequelize.sync().then(async () => {
   app.listen(PORT, () => console.log(`OpenClass Live on ${PORT}`));

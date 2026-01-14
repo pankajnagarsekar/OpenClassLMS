@@ -153,6 +153,9 @@ export interface GradebookData {
   rows: {
     student_name: string;
     student_email: string;
+    enrollment_id: number;
+    is_active: boolean;
+    teacher_notes: string | null;
     grades: Record<number, number>;
   }[];
 }

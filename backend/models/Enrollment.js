@@ -28,6 +28,10 @@ const Enrollment = sequelize.define('Enrollment', {
   enrolled_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
+  },
+  teacher_notes: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   timestamps: false
