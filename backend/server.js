@@ -336,6 +336,76 @@ app.delete('/api/enrollments/:id', authenticateToken, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// --- TEACHER SPECIFIC ROUTES ---
+
+app.get('/api/teacher/my-courses', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const courses = await Course.findAll({
+      where: { teacher_id: req.user.id },
+      include: [
+        { model: Enrollment, attributes: ['id'] },
+        { model: Lesson, attributes: ['id'] }
+      ]
+    });
+    
+    const data = courses.map(c => ({
+      id: c.id,
+      title: c.title,
+      student_count: c.Enrollments.length,
+      lesson_count: c.Lessons.length,
+      createdAt: c.createdAt
+    }));
+    
+    res.json(data);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.get('/api/teacher/students', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Find all courses by this teacher
+    const myCourses = await Course.findAll({ where: { teacher_id: req.user.id }, attributes: ['id', 'title'] });
+    const courseIds = myCourses.map(c => c.id);
+    
+    // Find enrollments for these courses
+    const enrollments = await Enrollment.findAll({
+      where: { course_id: { [Op.in]: courseIds } },
+      include: [
+        { model: User, attributes: ['name', 'email'] },
+        { model: Course, attributes: ['title'] }
+      ]
+    });
+    
+    const data = enrollments.map(e => ({
+      name: e.User.name,
+      email: e.User.email,
+      course_title: e.Course.title,
+      enrolled_at: e.enrolled_at
+    }));
+    
+    res.json(data);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.get('/api/teacher/candidates', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+        const students = await User.findAll({ 
+            where: { role: 'student' },
+            attributes: ['id', 'name', 'email'] 
+        });
+        res.json(students);
+    } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 // ... (Rest of existing endpoints) ...
 
 app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {

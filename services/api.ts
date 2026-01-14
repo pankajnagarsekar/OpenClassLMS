@@ -21,6 +21,9 @@ const MOCK_COURSES = [
     title: "Mastering React & TypeScript", 
     teacher_id: 1, 
     access_days: 365,
+    student_count: 5,
+    lesson_count: 10,
+    createdAt: new Date().toISOString(),
     Teacher: { name: "Dr. Sarah Jenkins" }, 
     Lessons: [
       { id: 101, title: "Intro", type: "video", content_url: "https://www.youtube.com/embed/SqcY0GlETPk", AssignmentSubmissions: [] },
@@ -37,12 +40,16 @@ const MOCK_USERS = [
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    // Graceful fallback for demo/offline purposes or missing endpoints
     if (!err.response || err.code === 'ERR_NETWORK' || err.response.status === 404) {
       const url = err.config.url;
       if (url.includes('/toggle-status')) return Promise.resolve({ data: { message: 'Status toggled' } });
       if (url.includes('/extend')) return Promise.resolve({ data: { message: 'Access extended' } });
       if (url.includes('/auth/login')) return Promise.resolve({ data: { token: "mock", user: MOCK_USERS[0] } });
       if (url.includes('/admin/users')) return Promise.resolve({ data: MOCK_USERS });
+      if (url.includes('/teacher/my-courses')) return Promise.resolve({ data: MOCK_COURSES });
+      if (url.includes('/teacher/students')) return Promise.resolve({ data: [] });
+      if (url.includes('/teacher/candidates')) return Promise.resolve({ data: MOCK_USERS });
       if (url === '/courses' || url === '/courses/') return Promise.resolve({ data: MOCK_COURSES });
       if (url.startsWith('/courses/')) return Promise.resolve({ data: MOCK_COURSES[0] });
       if (url.includes('/student/dashboard')) return Promise.resolve({ data: [{ 
@@ -54,6 +61,8 @@ api.interceptors.response.use(
           expires_at: "2025-12-31",
           is_active: true
       }] });
+      
+      // Default to empty object to prevent crashes, but ideally this should be specific based on expected return type
       return Promise.resolve({ data: {} });
     }
     return Promise.reject(err);

@@ -68,9 +68,13 @@ const TeacherDashboard: React.FC = () => {
   const fetchMyCourses = async () => {
     try {
       const res = await api.get('/teacher/my-courses');
-      setCourses(res.data);
-      if (res.data.length > 0 && !enrollCourseId) {
-        setEnrollCourseId(res.data[0].id.toString());
+      if (Array.isArray(res.data)) {
+        setCourses(res.data);
+        if (res.data.length > 0 && !enrollCourseId) {
+            setEnrollCourseId(res.data[0].id.toString());
+        }
+      } else {
+        setCourses([]); // Fallback
       }
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to load courses.");
@@ -80,25 +84,25 @@ const TeacherDashboard: React.FC = () => {
   };
 
   const fetchMyStudents = async () => {
-    try { const res = await api.get('/teacher/students'); setEnrolledStudents(res.data); } catch (err) {}
+    try { const res = await api.get('/teacher/students'); setEnrolledStudents(Array.isArray(res.data) ? res.data : []); } catch (err) {}
   };
 
   const fetchCandidates = async () => {
-    try { const res = await api.get('/teacher/candidates'); setCandidates(res.data); } catch (err) {}
+    try { const res = await api.get('/teacher/candidates'); setCandidates(Array.isArray(res.data) ? res.data : []); } catch (err) {}
   };
 
   const fetchCalendar = async () => {
-    try { const res = await api.get('/teacher/calendar'); setCalendarEvents(res.data); } catch (err) {}
+    try { const res = await api.get('/teacher/calendar'); setCalendarEvents(Array.isArray(res.data) ? res.data : []); } catch (err) {}
   };
 
   const fetchNotifications = async () => {
-    try { const res = await api.get('/notifications'); setNotifications(res.data); } catch (err) {}
+    try { const res = await api.get('/notifications'); setNotifications(Array.isArray(res.data) ? res.data : []); } catch (err) {}
   };
 
   const fetchDiscussions = async () => {
     try { 
       const res = await api.get(`/teacher/discussions/all?search=${discussionSearch}`); 
-      setDiscussions(res.data); 
+      setDiscussions(Array.isArray(res.data) ? res.data : []); 
     } catch (err) {}
   };
 
