@@ -596,6 +596,7 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
 
 const seedSettings = async () => {};
 
-sequelize.sync().then(async () => {
+// FIX: Enable ALTER to automatically add missing columns (like teacher_notes)
+sequelize.sync({ alter: true }).then(async () => {
   app.listen(PORT, () => console.log(`OpenClass Live on ${PORT}`));
 });
