@@ -106,8 +106,10 @@ Notification.belongsTo(User, { foreignKey: 'user_id' });
 
 // --- SETTINGS HELPER ---
 const getSetting = async (key) => {
-  const setting = await SystemSetting.findByPk(key);
-  return setting ? setting.value : false;
+  try {
+    const setting = await SystemSetting.findByPk(key);
+    return setting ? setting.value : false;
+  } catch (e) { return false; }
 };
 
 // --- MIDDLEWARES ---
@@ -140,11 +142,15 @@ const authenticateToken = async (req, res, next) => {
   
   jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) return res.status(403).json({ message: 'Invalid token' });
-    const user = await User.findByPk(decoded.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    if (!user.is_active) return res.status(403).json({ message: 'Account Deactivated. Contact Support.' });
-    req.user = user;
-    next();
+    try {
+        const user = await User.findByPk(decoded.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (!user.is_active) return res.status(403).json({ message: 'Account Deactivated. Contact Support.' });
+        req.user = user;
+        next();
+    } catch (dbError) {
+        return res.status(500).json({ message: 'Database error during auth' });
+    }
   });
 };
 
@@ -418,13 +424,18 @@ app.get('/api/admin/users', authenticateToken, adminAuth, async (req, res) => {
 app.get('/api/teacher/calendar', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'teacher' && req.user.role !== 'admin') return res.status(403).json({ message: 'Access denied' });
+    
+    // Safety check for due_date existence by handling potential errors gracefully or ensuring migration
     const lessons = await Lesson.findAll({
       where: { due_date: { [Op.ne]: null }, type: { [Op.in]: ['quiz', 'assignment'] } },
       include: [{ model: Course, where: { teacher_id: req.user.id }, attributes: ['title'] }]
     });
+    
     const courseEvents = lessons.map(l => ({ id: `lesson-${l.id}`, title: `${l.Course.title}: ${l.title}`, date: l.due_date, type: l.type === 'quiz' ? 'quiz' : 'assignment', link: `#/course/${l.course_id}` }));
+    
     const tasks = await CalendarTask.findAll({ where: { user_id: req.user.id } });
     const taskEvents = tasks.map(t => ({ id: `task-${t.id}`, title: t.title, date: t.date, type: 'personal', description: t.description }));
+    
     res.json([...courseEvents, ...taskEvents]);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -596,7 +607,38 @@ app.post('/api/courses/:id/lessons', authenticateToken, upload.single('file'), a
 
 const seedSettings = async () => {};
 
+// MANUAL MIGRATION TO FIX MISSING COLUMNS
+const performManualMigrations = async () => {
+  try {
+    // 1. teacher_notes in Enrollments
+    const [results1] = await sequelize.query("SHOW COLUMNS FROM Enrollments LIKE 'teacher_notes'");
+    if (results1.length === 0) {
+      await sequelize.query("ALTER TABLE Enrollments ADD COLUMN teacher_notes TEXT");
+      console.log("Migrated: Added teacher_notes to Enrollments");
+    }
+  } catch (err) { console.error("Migration check failed (Enrollments):", err.message); }
+
+  try {
+    // 2. due_date in Lessons
+    const [results2] = await sequelize.query("SHOW COLUMNS FROM Lessons LIKE 'due_date'");
+    if (results2.length === 0) {
+      await sequelize.query("ALTER TABLE Lessons ADD COLUMN due_date DATETIME");
+      console.log("Migrated: Added due_date to Lessons");
+    }
+  } catch (err) { console.error("Migration check failed (Lessons):", err.message); }
+
+  try {
+    // 3. target_students in Lessons
+    const [results3] = await sequelize.query("SHOW COLUMNS FROM Lessons LIKE 'target_students'");
+    if (results3.length === 0) {
+      await sequelize.query("ALTER TABLE Lessons ADD COLUMN target_students TEXT");
+      console.log("Migrated: Added target_students to Lessons");
+    }
+  } catch (err) { console.error("Migration check failed (Lessons):", err.message); }
+};
+
 // FIX: Enable ALTER to automatically add missing columns (like teacher_notes)
 sequelize.sync({ alter: true }).then(async () => {
+  await performManualMigrations();
   app.listen(PORT, () => console.log(`OpenClass Live on ${PORT}`));
 });
