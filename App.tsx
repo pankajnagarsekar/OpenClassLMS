@@ -18,14 +18,26 @@ import { SettingsProvider, useSettings } from './context/SettingsContext';
 
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [currentHash, setCurrentHash] = useState(window.location.hash || '#/');
   const { settings, loading } = useSettings();
 
   useEffect(() => {
     const handleHashChange = () => setCurrentHash(window.location.hash);
     window.addEventListener('hashchange', handleHashChange);
+    
+    // Restore User Session
     const savedUser = localStorage.getItem('user');
-    if (savedUser) setUser(JSON.parse(savedUser));
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    }
+    setAuthLoading(false);
+
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
@@ -93,7 +105,14 @@ const AppContent: React.FC = () => {
     }
   };
 
-  if (loading) return null;
+  // Prevent flicker or wrong redirects by waiting for auth check
+  if (loading || authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex flex-col selection:bg-indigo-100 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>

@@ -52,7 +52,8 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       setLoading(true);
       const res = await api.get(`/courses/${courseId}`);
       setCourse(res.data);
-      if (res.data.Lessons?.length > 0 && !activeLesson) {
+      // Default to first lesson only if no specific view is selected
+      if (view === 'content' && res.data.Lessons?.length > 0 && !activeLesson) {
         setActiveLesson(res.data.Lessons[0]);
       }
       
@@ -181,6 +182,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   if (!course) return <div className="p-20 text-center text-red-500 font-bold">Course not found.</div>;
 
   const API_BASE = (import.meta as any).env?.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+  const isInstructor = userRole === UserRole.TEACHER || userRole === UserRole.ADMIN;
 
   const renderActiveContent = () => {
     if (!activeLesson) return null;
@@ -410,13 +412,22 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       <div className={`w-full lg:w-96 border-r flex flex-col h-auto lg:h-[calc(100vh-80px)] sticky top-20 ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className={`p-8 border-b ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-100'}`}>
           <h2 className={`font-black text-xl leading-tight mb-2 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h2>
+          
+          {/* INSTRUCTOR TOOLS */}
+          {isInstructor && (
+            <div className={`mb-6 p-4 rounded-xl border ${settings.ENABLE_DARK_MODE ? 'bg-indigo-900/20 border-indigo-900/50' : 'bg-indigo-50 border-indigo-100'}`}>
+                <p className={`text-xs font-black uppercase tracking-widest mb-3 ${settings.ENABLE_DARK_MODE ? 'text-indigo-400' : 'text-indigo-900'}`}>Instructor Tools</p>
+                <button onClick={() => window.location.hash = `#/teacher/courses/${courseId}`} className={`block w-full text-left text-sm font-bold hover:underline mb-2 ${settings.ENABLE_DARK_MODE ? 'text-indigo-300' : 'text-indigo-700'}`}>✏️ Edit Course</button>
+                <a href={`#/gradebook/${courseId}`} className={`block w-full text-left text-sm font-bold hover:underline ${settings.ENABLE_DARK_MODE ? 'text-indigo-300' : 'text-indigo-700'}`}>📊 Gradebook</a>
+            </div>
+          )}
+
           <div className="flex flex-col space-y-3 mt-4">
             <button onClick={() => setView('content')} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50/10'}`}>Curriculum</button>
             {settings.SHOW_COURSE_ANNOUNCEMENTS && (
               <button onClick={() => { setView('announcements'); setActiveLesson(null); }} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'announcements' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50/10'}`}>Announcements</button>
             )}
             <button onClick={() => { setView('discussions'); fetchTopics(); setActiveLesson(null); }} className={`text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg transition-all ${view === 'discussions' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50/10'}`}>Discussions</button>
-            {(userRole === UserRole.TEACHER || userRole === UserRole.ADMIN) && <a href={`#/gradebook/${courseId}`} className="text-xs font-black uppercase tracking-widest py-2 px-4 rounded-lg text-emerald-600 hover:bg-emerald-50 text-center border border-emerald-100">Gradebook</a>}
           </div>
         </div>
 
@@ -432,7 +443,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           ))}
           {(!course.Lessons || course.Lessons.length === 0) && view === 'content' && (
              <div className="p-8 text-center text-slate-400 text-xs italic">
-                {course.is_enrolled ? "No lessons released yet." : "Enroll to view curriculum."}
+                {course.is_enrolled || isInstructor ? "No lessons released yet." : "Enroll to view curriculum."}
              </div>
           )}
         </div>
@@ -446,7 +457,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           ) : view === 'discussions' ? (
             renderDiscussions()
           ) : view === 'assignment-admin' ? (
-            // Assignment Admin Render Logic (abbreviated, same as before)
+            // Assignment Admin Render Logic
             <div className={`rounded-3xl border shadow-sm overflow-hidden ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
               <div className={`p-8 border-b flex justify-between items-center ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-50'}`}>
                 <h2 className={`text-2xl font-black ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Assignment Submissions</h2>
@@ -506,13 +517,18 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
             <div className={`text-center py-20 rounded-3xl border border-dashed ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                <div className="text-6xl mb-6">🎓</div>
                <h2 className={`text-3xl font-black mb-4 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h2>
-               <p className="text-slate-500 max-w-md mx-auto mb-8">
-                  {course.is_enrolled ? "Select a lesson from the sidebar to begin." : "You are not enrolled in this course. Join now to access the full curriculum and assignments."}
-               </p>
-               {!course.is_enrolled && userRole !== UserRole.TEACHER && userRole !== UserRole.ADMIN && (
-                 <button onClick={handleEnroll} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
-                   Enroll Now
-                 </button>
+               
+               {isInstructor ? (
+                 <p className="text-slate-500 max-w-md mx-auto mb-8">Welcome, Instructor. Use the sidebar to manage content or preview the course.</p>
+               ) : course.is_enrolled ? (
+                 <p className="text-slate-500 max-w-md mx-auto mb-8">Select a lesson from the sidebar to begin.</p>
+               ) : (
+                 <>
+                   <p className="text-slate-500 max-w-md mx-auto mb-8">You are not enrolled in this course. Join now to access the full curriculum and assignments.</p>
+                   <button onClick={handleEnroll} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
+                     Enroll Now
+                   </button>
+                 </>
                )}
             </div>
           )}
