@@ -16,6 +16,7 @@
     "mysql2": "^3.6.5",
     "nodemailer": "^6.9.7",
     "pdf-lib": "^1.17.1",
-    "sequelize": "^6.35.1"
+    "sequelize": "^6.35.1",
+    "xlsx": "^0.18.5"
   }
 }

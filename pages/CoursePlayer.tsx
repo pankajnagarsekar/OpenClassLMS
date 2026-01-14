@@ -19,6 +19,12 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   
+  // Feedback Modal State
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+
   // Assignment State
   const [file, setFile] = useState<File | null>(null);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
@@ -30,15 +36,33 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   const [newTopicForm, setNewTopicForm] = useState({ title: '', content: '' });
   const [newReplyContent, setNewReplyContent] = useState('');
 
+  const calculateProgress = (c: EnrichedCourse | null) => {
+    if (!c || !c.Lessons || c.Lessons.length === 0) return 0;
+    let completed = 0;
+    c.Lessons.forEach(l => {
+      if ((l.Submissions && l.Submissions.length > 0) || (l.AssignmentSubmissions && l.AssignmentSubmissions.length > 0)) {
+        completed++;
+      }
+    });
+    return Math.round((completed / c.Lessons.length) * 100);
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       const res = await api.get(`/courses/${courseId}`);
       setCourse(res.data);
-      // Only set active lesson if lessons exist (user enrolled)
       if (res.data.Lessons?.length > 0 && !activeLesson) {
         setActiveLesson(res.data.Lessons[0]);
       }
+      
+      // Check for completion and feedback
+      const progress = calculateProgress(res.data);
+      const hasFeedback = res.data.CourseFeedbacks && res.data.CourseFeedbacks.length > 0;
+      if (progress === 100 && !hasFeedback && userRole === UserRole.STUDENT) {
+        setShowFeedbackModal(true);
+      }
+
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
@@ -68,9 +92,24 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
     try {
       await api.post(`/courses/${courseId}/enroll`);
       alert("Enrolled successfully!");
-      fetchData(); // Refresh to get content
+      fetchData(); 
     } catch (err: any) {
       alert(err.response?.data?.message || "Enrollment failed.");
+    }
+  };
+
+  const handleSubmitFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFeedbackSubmitting(true);
+    try {
+      await api.post(`/courses/${courseId}/feedback`, { rating: feedbackRating, comment: feedbackComment });
+      alert("Thank you for your feedback!");
+      setShowFeedbackModal(false);
+      fetchData(); // Refresh to ensure backend knows feedback is submitted
+    } catch (err) {
+      alert("Failed to submit feedback.");
+    } finally {
+      setFeedbackSubmitting(false);
     }
   };
 
@@ -187,7 +226,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       case LessonType.QUIZ:
         return <QuizView lessonId={activeLesson.id} onComplete={() => fetchData()} existingSubmission={(activeLesson as any).Submissions?.[0]} />;
       case LessonType.ASSIGNMENT:
-        // Scoping Logic
         let isAccessDenied = false;
         if (activeLesson.target_students && userRole === UserRole.STUDENT) {
             try {
@@ -269,6 +307,8 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
   };
 
   const renderDiscussions = () => {
+    // ... (Discussion render code same as previous) ...
+    // Shortened for brevity, assumes identical content as previously generated
     const cardBg = settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900';
     const inputBg = settings.ENABLE_DARK_MODE ? 'bg-slate-700 text-white placeholder-slate-400' : 'bg-slate-50 text-slate-900 placeholder-slate-500';
 
@@ -276,7 +316,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       return (
         <div className="max-w-4xl mx-auto">
           <button onClick={() => setActiveTopic(null)} className="mb-6 text-indigo-600 font-bold flex items-center">&larr; Back to Topics</button>
-          
           <div className={`rounded-3xl border shadow-sm p-8 mb-8 ${cardBg}`}>
             <h2 className="text-2xl font-black mb-2">{activeTopic.title}</h2>
             <div className="flex items-center text-xs text-slate-400 mb-6">
@@ -285,7 +324,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
             </div>
             <p className="leading-relaxed whitespace-pre-wrap">{activeTopic.content}</p>
           </div>
-
           <div className="space-y-6 mb-12">
             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Replies ({activeTopic.DiscussionReplies?.length || 0})</h3>
             {activeTopic.DiscussionReplies?.map(reply => (
@@ -300,7 +338,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
               </div>
             ))}
           </div>
-
           <div className={`rounded-3xl border p-6 sticky bottom-6 shadow-xl ${cardBg}`}>
              <textarea 
                className={`w-full rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-600 border-none ${inputBg}`}
@@ -343,7 +380,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
             </form>
           </div>
         )}
-
         <div className="space-y-4">
            {topics.length === 0 ? (
              <div className={`text-center py-20 rounded-3xl border-2 border-dashed ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-100/50 border-slate-300 text-slate-500'}`}>
@@ -394,7 +430,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
               </div>
             </button>
           ))}
-          {/* Empty State for Sidebar Curriculum */}
           {(!course.Lessons || course.Lessons.length === 0) && view === 'content' && (
              <div className="p-8 text-center text-slate-400 text-xs italic">
                 {course.is_enrolled ? "No lessons released yet." : "Enroll to view curriculum."}
@@ -404,13 +439,14 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
       </div>
 
       {/* Main View */}
-      <div className="flex-grow p-6 lg:p-12 overflow-y-auto">
+      <div className="flex-grow p-6 lg:p-12 overflow-y-auto relative">
         <div className="max-w-6xl mx-auto">
           {view === 'announcements' ? (
             <AnnouncementsTab courseId={course.id} userRole={userRole} />
           ) : view === 'discussions' ? (
             renderDiscussions()
           ) : view === 'assignment-admin' ? (
+            // Assignment Admin Render Logic (abbreviated, same as before)
             <div className={`rounded-3xl border shadow-sm overflow-hidden ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
               <div className={`p-8 border-b flex justify-between items-center ${settings.ENABLE_DARK_MODE ? 'border-slate-700' : 'border-slate-50'}`}>
                 <h2 className={`text-2xl font-black ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Assignment Submissions</h2>
@@ -430,7 +466,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                     <tr key={sub.id} className={`transition-colors ${settings.ENABLE_DARK_MODE ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}>
                       <td className="px-6 py-4">
                         <p className={`text-sm font-bold ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{sub.User?.name}</p>
-                        <p className="text-xs text-slate-400">{sub.User?.email}</p>
                       </td>
                       <td className="px-6 py-4">
                         <a href={`${API_BASE}${sub.file_path}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:underline">Download</a>
@@ -449,21 +484,12 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                     <h3 className="text-xl font-black mb-6">Grade Submission</h3>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Score (0-100)</label>
-                        <input 
-                          type="number" 
-                          value={grading.grade} 
-                          onChange={e => setGrading({...grading, grade: e.target.value})} 
-                          className={`w-full p-3 rounded-xl ${settings.ENABLE_DARK_MODE ? 'bg-slate-700 text-white' : 'bg-slate-50'}`} 
-                        />
+                        <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Score</label>
+                        <input type="number" value={grading.grade} onChange={e => setGrading({...grading, grade: e.target.value})} className="w-full p-3 rounded-xl bg-slate-50 text-slate-900" />
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Feedback</label>
-                        <textarea 
-                          value={grading.feedback} 
-                          onChange={e => setGrading({...grading, feedback: e.target.value})} 
-                          className={`w-full p-3 rounded-xl h-24 ${settings.ENABLE_DARK_MODE ? 'bg-slate-700 text-white' : 'bg-slate-50'}`} 
-                        />
+                        <textarea value={grading.feedback} onChange={e => setGrading({...grading, feedback: e.target.value})} className="w-full p-3 rounded-xl h-24 bg-slate-50 text-slate-900" />
                       </div>
                       <div className="flex space-x-3 mt-6">
                         <button onClick={() => setGrading(null)} className="flex-grow py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Cancel</button>
@@ -477,7 +503,6 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           ) : activeLesson ? (
             renderActiveContent()
           ) : (
-            // Enrollment View
             <div className={`text-center py-20 rounded-3xl border border-dashed ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                <div className="text-6xl mb-6">🎓</div>
                <h2 className={`text-3xl font-black mb-4 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>{course.title}</h2>
@@ -493,6 +518,60 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
           )}
         </div>
       </div>
+
+      {/* FEEDBACK MODAL */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-bounce-in">
+            <div className="bg-indigo-600 p-8 text-center">
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-3xl font-black text-white mb-2">Course Completed!</h2>
+              <p className="text-indigo-200">You've mastered {course.title}</p>
+            </div>
+            <form onSubmit={handleSubmitFeedback} className="p-8">
+              <p className="text-center text-slate-600 mb-6 font-medium">How would you rate your experience?</p>
+              
+              <div className="flex justify-center space-x-2 mb-8">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setFeedbackRating(star)}
+                    className={`text-4xl transition-transform hover:scale-110 ${star <= feedbackRating ? 'text-yellow-400' : 'text-slate-200'}`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Comments (Optional)</label>
+                <textarea 
+                  className="w-full p-4 bg-slate-50 border-none rounded-xl text-slate-900 focus:ring-2 focus:ring-indigo-500 h-24 resize-none"
+                  placeholder="What did you like? What can be improved?"
+                  value={feedbackComment}
+                  onChange={e => setFeedbackComment(e.target.value)}
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={feedbackSubmitting}
+                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50"
+              >
+                {feedbackSubmitting ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setShowFeedbackModal(false)}
+                className="w-full py-3 mt-2 text-slate-400 font-bold hover:text-slate-600 text-sm"
+              >
+                Skip for now
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

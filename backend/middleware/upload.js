@@ -23,12 +23,12 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx', '.zip'];
+    const allowedTypes = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx', '.zip', '.xlsx', '.xls'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Allowed: PDF, Images, DOC/DOCX, and ZIP.'));
+      cb(new Error('Invalid file type. Allowed: PDF, Images, Office Docs (Word/Excel), and ZIP.'));
     }
   }
 });

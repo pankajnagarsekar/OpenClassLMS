@@ -47,6 +47,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
 
   // Quiz Builder State
+  const [quizMode, setQuizMode] = useState<'manual' | 'upload'>('manual');
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion>({
     text: '',
@@ -169,25 +170,61 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     setQuizQuestions(quizQuestions.filter((_, i) => i !== index));
   };
 
+  const handleDownloadTemplate = () => {
+    const csvContent = "data:text/csv;charset=utf-8,Question,OptionA,OptionB,OptionC,OptionD,CorrectAnswer\nSample Question?,Ans1,Ans2,Ans3,Ans4,Ans1";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "quiz_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   const handleAddLesson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseId) return;
     
-    if (lessonForm.type === LessonType.QUIZ && quizQuestions.length === 0) {
-      alert("Please add at least one question to the quiz.");
-      return;
-    }
-
     setAddingLesson(true);
 
     const data = new FormData();
     data.append('title', lessonForm.title);
-    data.append('type', lessonForm.type);
     data.append('position', (lessons.length + 1).toString());
+
+    // SPECIAL HANDLING FOR QUIZ UPLOAD
+    if (lessonForm.type === LessonType.QUIZ && quizMode === 'upload') {
+      if (!lessonForm.file) {
+        alert("Please select an Excel/CSV file to upload.");
+        setAddingLesson(false);
+        return;
+      }
+      data.append('file', lessonForm.file);
+      try {
+        await api.post(`/courses/${courseId}/quiz/upload`, data, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        alert("Quiz imported successfully!");
+        setLessonForm({ title: '', type: LessonType.VIDEO, content: '', file: null });
+        fetchCourse();
+      } catch (err: any) {
+        alert(err.response?.data?.message || 'Failed to upload quiz.');
+      } finally {
+        setAddingLesson(false);
+      }
+      return;
+    }
+
+    // STANDARD LESSON HANDLING
+    data.append('type', lessonForm.type);
 
     if (lessonForm.type === LessonType.PDF && lessonForm.file) {
       data.append('file', lessonForm.file);
     } else if (lessonForm.type === LessonType.QUIZ) {
+      if (quizQuestions.length === 0) {
+        alert("Please add at least one question.");
+        setAddingLesson(false);
+        return;
+      }
       data.append('questions', JSON.stringify(quizQuestions));
     } else {
       data.append('content', lessonForm.content);
@@ -226,7 +263,6 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
   if (loading) return <div className="p-20 text-center animate-pulse">Loading Course Details...</div>;
 
-  // IMPORTANT: Input style forced to white bg/dark text for readability in dark mode as requested
   const inputStyle = `w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-900 border-slate-200`;
 
   return (
@@ -300,7 +336,6 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
               />
             </div>
             
-            {/* Admin Only: Assign Teacher */}
             {currentUser?.role === UserRole.ADMIN && (
               <div>
                 <label className={`block text-sm font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Course Owner (Instructor)</label>
@@ -328,7 +363,6 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
         </form>
       </div>
 
-      {/* Curriculum Management Section */}
       {courseId && (
         <div className={`p-8 rounded-3xl shadow-lg border ${settings.ENABLE_DARK_MODE ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
           <h2 className={`text-2xl font-bold mb-6 ${settings.ENABLE_DARK_MODE ? 'text-white' : 'text-slate-900'}`}>Curriculum</h2>
@@ -491,65 +525,97 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
                  {lessonForm.type === LessonType.QUIZ && (
                     <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
-                      <h4 className="font-bold text-slate-900 mb-4">Quiz Builder</h4>
-                      
-                      <div className="space-y-4 mb-6">
-                        <input 
-                          type="text" 
-                          placeholder="Question Text"
-                          className={inputStyle}
-                          value={currentQuestion.text}
-                          onChange={e => setCurrentQuestion({...currentQuestion, text: e.target.value})}
-                        />
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                          {currentQuestion.options.map((opt, idx) => (
-                            <div key={idx} className="flex items-center space-x-2">
-                              <input 
-                                type="radio" 
-                                name="correctAnswer" 
-                                checked={currentQuestion.correctAnswer === opt && opt !== ''}
-                                onChange={() => setCurrentQuestion({...currentQuestion, correctAnswer: opt})}
-                                className="w-4 h-4 text-indigo-600"
-                              />
-                              <input 
-                                type="text"
-                                placeholder={`Option ${idx + 1}`}
-                                className="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white text-slate-900"
-                                value={opt}
-                                onChange={e => {
-                                  const newOptions = [...currentQuestion.options] as [string, string, string, string];
-                                  newOptions[idx] = e.target.value;
-                                  // If this was the correct answer, update that too
-                                  const newCorrect = currentQuestion.correctAnswer === opt ? e.target.value : currentQuestion.correctAnswer;
-                                  setCurrentQuestion({...currentQuestion, options: newOptions, correctAnswer: newCorrect});
-                                }}
-                              />
-                            </div>
-                          ))}
+                      <div className="flex justify-between items-center mb-6">
+                        <h4 className="font-bold text-slate-900">Quiz Builder</h4>
+                        <div className="flex space-x-2 bg-white rounded-lg p-1 border">
+                          <button 
+                            type="button" 
+                            onClick={() => setQuizMode('manual')}
+                            className={`px-3 py-1 text-xs font-bold rounded ${quizMode === 'manual' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}
+                          >
+                            Manual
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => setQuizMode('upload')}
+                            className={`px-3 py-1 text-xs font-bold rounded ${quizMode === 'upload' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}
+                          >
+                            Excel Import
+                          </button>
                         </div>
-                        
-                        <button 
-                          type="button" 
-                          onClick={handleAddQuestion}
-                          className="w-full py-2 bg-indigo-100 text-indigo-700 font-bold rounded-lg hover:bg-indigo-200 text-sm"
-                        >
-                          Add Question
-                        </button>
                       </div>
-
-                      <div className="space-y-3">
-                        {quizQuestions.length === 0 && <p className="text-sm text-slate-400 italic">No questions added yet.</p>}
-                        {quizQuestions.map((q, idx) => (
-                          <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-start">
-                            <div>
-                              <p className="font-bold text-sm text-slate-800">{idx + 1}. {q.text}</p>
-                              <p className="text-xs text-green-600 font-semibold">Answer: {q.correctAnswer}</p>
+                      
+                      {quizMode === 'upload' ? (
+                        <div className="space-y-4 text-center p-6 border-2 border-dashed rounded-xl border-slate-300">
+                          <p className="text-sm text-slate-600 mb-2">Upload a CSV or Excel file with columns: <br/><b>Question, OptionA, OptionB, OptionC, OptionD, CorrectAnswer</b></p>
+                          <button type="button" onClick={handleDownloadTemplate} className="text-indigo-600 text-xs font-bold underline mb-4">Download Template CSV</button>
+                          <input 
+                            type="file" 
+                            accept=".csv, .xlsx, .xls"
+                            className={inputStyle}
+                            onChange={e => setLessonForm({...lessonForm, file: e.target.files?.[0] || null})}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-4 mb-6">
+                            <input 
+                              type="text" 
+                              placeholder="Question Text"
+                              className={inputStyle}
+                              value={currentQuestion.text}
+                              onChange={e => setCurrentQuestion({...currentQuestion, text: e.target.value})}
+                            />
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                              {currentQuestion.options.map((opt, idx) => (
+                                <div key={idx} className="flex items-center space-x-2">
+                                  <input 
+                                    type="radio" 
+                                    name="correctAnswer" 
+                                    checked={currentQuestion.correctAnswer === opt && opt !== ''}
+                                    onChange={() => setCurrentQuestion({...currentQuestion, correctAnswer: opt})}
+                                    className="w-4 h-4 text-indigo-600"
+                                  />
+                                  <input 
+                                    type="text"
+                                    placeholder={`Option ${idx + 1}`}
+                                    className="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white text-slate-900"
+                                    value={opt}
+                                    onChange={e => {
+                                      const newOptions = [...currentQuestion.options] as [string, string, string, string];
+                                      newOptions[idx] = e.target.value;
+                                      const newCorrect = currentQuestion.correctAnswer === opt ? e.target.value : currentQuestion.correctAnswer;
+                                      setCurrentQuestion({...currentQuestion, options: newOptions, correctAnswer: newCorrect});
+                                    }}
+                                  />
+                                </div>
+                              ))}
                             </div>
-                            <button type="button" onClick={() => removeQuestion(idx)} className="text-red-500 text-xs font-bold hover:underline">Remove</button>
+                            
+                            <button 
+                              type="button" 
+                              onClick={handleAddQuestion}
+                              className="w-full py-2 bg-indigo-100 text-indigo-700 font-bold rounded-lg hover:bg-indigo-200 text-sm"
+                            >
+                              Add Question
+                            </button>
                           </div>
-                        ))}
-                      </div>
+
+                          <div className="space-y-3">
+                            {quizQuestions.length === 0 && <p className="text-sm text-slate-400 italic">No questions added yet.</p>}
+                            {quizQuestions.map((q, idx) => (
+                              <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-start">
+                                <div>
+                                  <p className="font-bold text-sm text-slate-800">{idx + 1}. {q.text}</p>
+                                  <p className="text-xs text-green-600 font-semibold">Answer: {q.correctAnswer}</p>
+                                </div>
+                                <button type="button" onClick={() => removeQuestion(idx)} className="text-red-500 text-xs font-bold hover:underline">Remove</button>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                  )}
               </div>
@@ -559,14 +625,13 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                 disabled={addingLesson}
                 className="w-full py-3 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 transition-colors"
               >
-                 {addingLesson ? 'Adding Lesson...' : '+ Add to Curriculum'}
+                 {addingLesson ? 'Adding Lesson...' : (quizMode === 'upload' && lessonForm.type === LessonType.QUIZ ? 'Import Quiz' : '+ Add to Curriculum')}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Delete Course Button (Visible if courseId exists) */}
       {courseId && (
         <div className="mt-12 text-center">
           <button 

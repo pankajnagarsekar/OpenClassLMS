@@ -21,7 +21,6 @@ export interface User {
   is_verified?: boolean;
   is_active?: boolean;
   createdAt?: string;
-  // Admin Stats (Optional)
   stats?: {
     courses_created?: number;
     total_students?: number;
@@ -99,10 +98,16 @@ export interface Lesson {
   type: LessonType;
   content_url: string;
   position: number;
-  target_students?: string; // JSON String of allowed student IDs
+  target_students?: string; 
   Questions?: Question[];
   Submissions?: Submission[];
   AssignmentSubmissions?: AssignmentSubmission[];
+}
+
+export interface CourseFeedback {
+  id: number;
+  rating: number;
+  comment: string;
 }
 
 export interface Course {
@@ -118,6 +123,7 @@ export interface Course {
     name: string;
   };
   Lessons?: Lesson[];
+  CourseFeedbacks?: CourseFeedback[];
 }
 
 export interface Enrollment {
