@@ -484,7 +484,7 @@ const CoursePlayer: React.FC<{ courseId: string; userRole?: UserRole }> = ({ cou
                <p className="text-slate-500 max-w-md mx-auto mb-8">
                   {course.is_enrolled ? "Select a lesson from the sidebar to begin." : "You are not enrolled in this course. Join now to access the full curriculum and assignments."}
                </p>
-               {!course.is_enrolled && (
+               {!course.is_enrolled && userRole !== UserRole.TEACHER && userRole !== UserRole.ADMIN && (
                  <button onClick={handleEnroll} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
                    Enroll Now
                  </button>

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { useSettings } from '../context/SettingsContext';
-import { Lesson, LessonType, User } from '../types';
+import { Lesson, LessonType, User, UserRole } from '../types';
 
 interface ManageCourseProps {
   courseId?: string; // If present, we are editing
@@ -16,16 +16,21 @@ interface QuizQuestion {
 
 const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
   const { settings } = useSettings();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     thumbnail_url: '',
     video_embed_url: '',
-    access_days: 365
+    access_days: 365,
+    teacher_id: ''
   });
+  
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(!!courseId);
   const [saving, setSaving] = useState(false);
+  const [availableTeachers, setAvailableTeachers] = useState<User[]>([]);
   
   // Lesson Form State
   const [lessonForm, setLessonForm] = useState({
@@ -49,6 +54,28 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     correctAnswer: ''
   });
 
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setCurrentUser(user);
+      if (user.role === UserRole.ADMIN) {
+        fetchTeachers();
+      }
+    }
+  }, []);
+
+  const fetchTeachers = async () => {
+    try {
+      const res = await api.get('/admin/users');
+      // Filter for teachers and admins
+      const teachers = res.data.filter((u: User) => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN);
+      setAvailableTeachers(teachers);
+    } catch (err) {
+      console.error("Failed to load teachers", err);
+    }
+  };
+
   const fetchCourse = async () => {
     try {
       const res = await api.get(`/courses/${courseId}`);
@@ -57,7 +84,8 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
         description: res.data.description,
         thumbnail_url: res.data.thumbnail_url,
         video_embed_url: res.data.video_embed_url,
-        access_days: res.data.access_days
+        access_days: res.data.access_days,
+        teacher_id: res.data.teacher_id
       });
       if (res.data.Lessons) {
         setLessons(res.data.Lessons);
@@ -108,6 +136,19 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
       alert('Failed to save course.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!courseId) return;
+    if (!confirm("Are you sure you want to delete this course? This action cannot be undone.")) return;
+    
+    try {
+      await api.delete(`/courses/${courseId}`);
+      alert("Course deleted successfully.");
+      window.location.hash = '#/teacher-dashboard';
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to delete course.");
     }
   };
 
@@ -185,6 +226,9 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
   if (loading) return <div className="p-20 text-center animate-pulse">Loading Course Details...</div>;
 
+  // IMPORTANT: Input style forced to white bg/dark text for readability in dark mode as requested
+  const inputStyle = `w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-900 border-slate-200`;
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <div className="mb-10">
@@ -204,7 +248,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
               required
               value={formData.title}
               onChange={e => setFormData({...formData, title: e.target.value})}
-              className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+              className={inputStyle}
               placeholder="e.g. Advanced React Patterns"
             />
           </div>
@@ -216,7 +260,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
               required
               value={formData.description}
               onChange={e => setFormData({...formData, description: e.target.value})}
-              className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+              className={inputStyle}
               placeholder="What will students learn in this course?"
             />
           </div>
@@ -228,7 +272,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                 type="text" 
                 value={formData.thumbnail_url}
                 onChange={e => setFormData({...formData, thumbnail_url: e.target.value})}
-                className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                className={inputStyle}
                 placeholder="https://..."
               />
             </div>
@@ -238,21 +282,40 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                 type="text" 
                 value={formData.video_embed_url}
                 onChange={e => setFormData({...formData, video_embed_url: e.target.value})}
-                className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                className={inputStyle}
                 placeholder="https://www.youtube.com/embed/..."
               />
             </div>
           </div>
 
-          <div>
-            <label className={`block text-sm font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Access Duration (Days)</label>
-            <input 
-              type="number" 
-              required
-              value={formData.access_days}
-              onChange={e => setFormData({...formData, access_days: parseInt(e.target.value)})}
-              className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${settings.ENABLE_DARK_MODE ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className={`block text-sm font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Access Duration (Days)</label>
+              <input 
+                type="number" 
+                required
+                value={formData.access_days}
+                onChange={e => setFormData({...formData, access_days: parseInt(e.target.value)})}
+                className={inputStyle}
+              />
+            </div>
+            
+            {/* Admin Only: Assign Teacher */}
+            {currentUser?.role === UserRole.ADMIN && (
+              <div>
+                <label className={`block text-sm font-bold mb-2 ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Course Owner (Instructor)</label>
+                <select
+                  value={formData.teacher_id}
+                  onChange={e => setFormData({...formData, teacher_id: e.target.value})}
+                  className={inputStyle}
+                >
+                  <option value="">(Me)</option>
+                  {availableTeachers.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.email})</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <button 
@@ -297,7 +360,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                    <input 
                       type="text" 
                       required 
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                      className={inputStyle}
                       value={lessonForm.title}
                       onChange={e => setLessonForm({...lessonForm, title: e.target.value})}
                       placeholder="Introduction to..."
@@ -306,7 +369,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                 <div>
                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Type</label>
                    <select 
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white"
+                      className={inputStyle}
                       value={lessonForm.type}
                       onChange={e => setLessonForm({...lessonForm, type: e.target.value as LessonType})}
                    >
@@ -327,7 +390,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                       <input 
                         type="text" 
                         required 
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                        className={inputStyle}
                         value={lessonForm.content}
                         onChange={e => setLessonForm({...lessonForm, content: e.target.value})}
                         placeholder="https://www.youtube.com/embed/..."
@@ -342,7 +405,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                         type="file" 
                         required 
                         accept=".pdf,.doc,.docx"
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white"
+                        className={inputStyle}
                         onChange={e => setLessonForm({...lessonForm, file: e.target.files?.[0] || null})}
                       />
                     </>
@@ -354,7 +417,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                       <textarea 
                         required 
                         rows={6}
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                        className={inputStyle}
                         value={lessonForm.content}
                         onChange={e => setLessonForm({...lessonForm, content: e.target.value})}
                         placeholder="Write your article or reading material here..."
@@ -375,7 +438,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                               onChange={() => setAssignmentScope('all')}
                               className="w-4 h-4 text-indigo-600"
                             />
-                            <span className="text-sm font-medium">Assign to All Students</span>
+                            <span className={`text-sm font-medium ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Assign to All Students</span>
                           </label>
                           <label className="flex items-center space-x-2 cursor-pointer">
                             <input 
@@ -385,18 +448,18 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                               onChange={() => setAssignmentScope('specific')}
                               className="w-4 h-4 text-indigo-600"
                             />
-                            <span className="text-sm font-medium">Assign to Specific Students</span>
+                            <span className={`text-sm font-medium ${settings.ENABLE_DARK_MODE ? 'text-slate-300' : 'text-slate-700'}`}>Assign to Specific Students</span>
                           </label>
                         </div>
 
                         {assignmentScope === 'specific' && (
-                          <div className="mt-4 p-4 border rounded-xl bg-slate-50 max-h-48 overflow-y-auto">
+                          <div className="mt-4 p-4 border rounded-xl bg-white max-h-48 overflow-y-auto">
                             <p className="text-xs font-bold text-slate-500 uppercase mb-2">Select Students</p>
                             {students.length === 0 ? (
                                 <p className="text-sm italic text-slate-400">No students enrolled yet.</p>
                             ) : (
                                 students.map(student => (
-                                  <label key={student.id} className="flex items-center space-x-3 mb-2 cursor-pointer hover:bg-slate-100 p-2 rounded-lg">
+                                  <label key={student.id} className="flex items-center space-x-3 mb-2 cursor-pointer hover:bg-slate-50 p-2 rounded-lg">
                                     <input 
                                       type="checkbox" 
                                       checked={selectedStudentIds.includes(student.id)}
@@ -418,7 +481,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                       <textarea 
                         required 
                         rows={6}
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                        className={inputStyle}
                         value={lessonForm.content}
                         onChange={e => setLessonForm({...lessonForm, content: e.target.value})}
                         placeholder="Describe the project requirements..."
@@ -434,7 +497,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                         <input 
                           type="text" 
                           placeholder="Question Text"
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200"
+                          className={inputStyle}
                           value={currentQuestion.text}
                           onChange={e => setCurrentQuestion({...currentQuestion, text: e.target.value})}
                         />
@@ -452,7 +515,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                               <input 
                                 type="text"
                                 placeholder={`Option ${idx + 1}`}
-                                className="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                                className="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white text-slate-900"
                                 value={opt}
                                 onChange={e => {
                                   const newOptions = [...currentQuestion.options] as [string, string, string, string];
@@ -500,6 +563,18 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Delete Course Button (Visible if courseId exists) */}
+      {courseId && (
+        <div className="mt-12 text-center">
+          <button 
+             onClick={handleDeleteCourse}
+             className="px-6 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors"
+          >
+             Delete Course Permanently
+          </button>
         </div>
       )}
     </div>

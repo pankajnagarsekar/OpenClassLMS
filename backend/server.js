@@ -422,12 +422,22 @@ app.get('/api/teacher/students', authenticateToken, async (req, res) => {
 
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'teacher') return res.status(403).json({ message: 'Access denied: Teachers only' });
-    const { title, description, thumbnail_url, video_embed_url, access_days } = req.body;
+    // UPDATED: Allow Admin to specify teacher_id, otherwise default to current user
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied: Instructors only' });
+    }
+
+    const { title, description, thumbnail_url, video_embed_url, access_days, teacher_id } = req.body;
+    
+    let assignedTeacherId = req.user.id;
+    if (req.user.role === 'admin' && teacher_id) {
+      assignedTeacherId = teacher_id;
+    }
+
     const course = await Course.create({
       title, description, thumbnail_url, video_embed_url,
       access_days: access_days || 365,
-      teacher_id: req.user.id
+      teacher_id: assignedTeacherId
     });
     res.status(201).json(course);
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -440,6 +450,28 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
     if (course.teacher_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ message: 'Unauthorized' });
     await course.update(req.body);
     res.json(course);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// NEW: Delete Course Endpoint
+app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
+  try {
+    const course = await Course.findByPk(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+
+    // Authorization Check
+    if (course.teacher_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized to delete this course.' });
+    }
+
+    // Safety Check: Active Students
+    const studentCount = await Enrollment.count({ where: { course_id: course.id } });
+    if (studentCount > 0) {
+      return res.status(400).json({ message: `Cannot delete course. There are ${studentCount} active enrollments.` });
+    }
+
+    await course.destroy();
+    res.json({ message: 'Course deleted successfully.' });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
