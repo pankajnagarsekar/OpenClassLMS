@@ -37,6 +37,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
     title: '',
     type: LessonType.VIDEO,
     content: '',
+    due_date: '',
     file: null as File | null
   });
   const [addingLesson, setAddingLesson] = useState(false);
@@ -204,7 +205,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         alert("Quiz imported successfully!");
-        setLessonForm({ title: '', type: LessonType.VIDEO, content: '', file: null });
+        setLessonForm({ title: '', type: LessonType.VIDEO, content: '', due_date: '', file: null });
         fetchCourse();
       } catch (err: any) {
         alert(err.response?.data?.message || 'Failed to upload quiz.');
@@ -216,6 +217,11 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
 
     // STANDARD LESSON HANDLING
     data.append('type', lessonForm.type);
+    
+    // Add Due Date if present
+    if (lessonForm.due_date && (lessonForm.type === LessonType.ASSIGNMENT || lessonForm.type === LessonType.QUIZ)) {
+        data.append('due_date', lessonForm.due_date);
+    }
 
     if (lessonForm.type === LessonType.PDF && lessonForm.file) {
       data.append('file', lessonForm.file);
@@ -241,7 +247,7 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
       });
       
       // Reset form and refresh list
-      setLessonForm({ title: '', type: LessonType.VIDEO, content: '', file: null });
+      setLessonForm({ title: '', type: LessonType.VIDEO, content: '', due_date: '', file: null });
       setQuizQuestions([]);
       setAssignmentScope('all');
       setSelectedStudentIds([]);
@@ -377,7 +383,10 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                        <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center">{idx + 1}</span>
                        <div>
                           <p className="font-bold text-slate-900">{lesson.title}</p>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{lesson.type}</p>
+                          <div className="flex space-x-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                             <span>{lesson.type}</span>
+                             {lesson.due_date && <span className="text-red-500">• Due: {new Date(lesson.due_date).toLocaleDateString()}</span>}
+                          </div>
                        </div>
                     </div>
                  </div>
@@ -457,6 +466,18 @@ const ManageCourse: React.FC<ManageCourseProps> = ({ courseId }) => {
                         placeholder="Write your article or reading material here..."
                       />
                     </>
+                 )}
+
+                 {(lessonForm.type === LessonType.ASSIGNMENT || lessonForm.type === LessonType.QUIZ) && (
+                    <div className="mb-6">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Due Date (Optional)</label>
+                        <input 
+                            type="date" 
+                            className={inputStyle}
+                            value={lessonForm.due_date}
+                            onChange={e => setLessonForm({...lessonForm, due_date: e.target.value})}
+                        />
+                    </div>
                  )}
 
                  {lessonForm.type === LessonType.ASSIGNMENT && (

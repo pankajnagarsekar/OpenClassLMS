@@ -98,7 +98,8 @@ export interface Lesson {
   type: LessonType;
   content_url: string;
   position: number;
-  target_students?: string; 
+  target_students?: string;
+  due_date?: string; 
   Questions?: Question[];
   Submissions?: Submission[];
   AssignmentSubmissions?: AssignmentSubmission[];
@@ -176,4 +177,29 @@ export interface SystemSettings {
   SHOW_COURSE_ANNOUNCEMENTS: boolean;
   SHOW_FEATURED_COURSES: boolean;
   ENABLE_DARK_MODE: boolean;
+}
+
+export interface CalendarTask {
+  id: number;
+  title: string;
+  date: string;
+  description?: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  type: 'quiz' | 'assignment' | 'personal';
+  link?: string;
+  description?: string;
+}
+
+export interface Notification {
+  id: number;
+  message: string;
+  type: 'submission' | 'reply' | 'system';
+  is_read: boolean;
+  link?: string;
+  createdAt: string;
 }

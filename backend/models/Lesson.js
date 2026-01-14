@@ -29,6 +29,10 @@ const Lesson = sequelize.define('Lesson', {
     type: DataTypes.TEXT, // JSON string of user IDs
     allowNull: true,
     comment: 'JSON array of user IDs allowed to view this lesson'
+  },
+  due_date: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   timestamps: true
